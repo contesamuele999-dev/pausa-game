@@ -17,11 +17,11 @@ Il refresh della pagina host non perde la stanza. Chi blocca il telefono rientra
 | Gioco | Per chi | Come funziona | Durata |
 |---|---|---|---|
 | **Quiz** | bambini / ragazzi / adulti (3 set separati) | 8 domande, 4 risposte. Punti per correttezza + velocità (500 + fino a 500 bonus). Le soluzioni si vedono solo nel ripasso finale. | ~3 min |
-| **Riflessi** | tutti, ottimo per i bambini (non serve leggere) | 5 round. Schermo rosso, poi verde: chi tocca prima vince. Partenza anticipata = 0 punti. | ~1 min |
-| **Insieme** | tutta la sala, cooperativo | 3 round da 30s. Tutti battono sul telefono per riempire una barra che si svuota da sola. Se ce la fate, punti a tutti (di più a chi ha battuto di più). | ~2 min |
+| **Riflessi** | tutti, ottimo per i bambini (non serve leggere) | 8 manche. Schermo rosso, poi verde: chi tocca prima vince. Partenza anticipata = 0 punti. | ~1,5 min |
+| **Insieme** | tutta la sala, cooperativo | 3 round da 30s. Tutti battono sul telefono per riempire una barra che si svuota da sola. Ogni battuta fa un colpo secco e il tono sale col riempirsi della barra: la sala si sente. Se ce la fate, punti a tutti (di piu' a chi ha battuto di piu'). | ~2 min |
 | **Corsa** 🏎️ | dai 6 anni in su | Kart. Si avanza alternando i due pedali, sinistra-destra-sinistra. Martellare sempre lo stesso non porta da nessuna parte. Pedana turbo ogni 25 metri, podio ai primi tre al traguardo. | ~1 min |
-| **Salta** 🦘 | tutti | 24 ostacoli a tempo: 🌵 a terra si salta, 🦅 in alto si resta giù. Tre vite a testa, così si gioca fino in fondo invece di uscire al primo errore. Gli ostacoli si stringono da 2,7s a 1,15s. | ~45s |
-| **Raccogli** 🧺 | dagli 8 anni in su | Cadono oggetti su tre corsie: sposti il cestino per prendere 🟢 10, 📝 25 e 💎 50 punti, e schivi i 🐛. Ogni presa di fila moltiplica fino a x5, tre bug e sei fuori. | ~35s |
+| **Salta** 🦘 | tutti | 34 ostacoli a tempo: 🌵 a terra si salta, 🦅 in alto si resta giu'. Tre vite a testa. Ritmo serrato, da 2s a 1s fra un ostacolo e l'altro. | ~40s |
+| **Raccogli** 🧺 | dagli 8 anni in su | Cade qualcosa su **tutte e tre** le corsie: sposti il cestino per prendere 🟢 10, 📝 25 e 💎 50 punti e scappare dai 🐛. Restare fermi non e' mai sicuro. Combo fino a x5, tre bug e sei fuori. | ~25s |
 
 ### I personaggi
 
@@ -41,6 +41,10 @@ E' il porting di Token Rush, che nell'originale e' un gioco a schermo singolo do
 browser calcola tutto. Qui ci sono premi in palio, quindi un punteggio che arriva dal
 telefono e' un punteggio che si puo' truccare aprendo la console. Le cadute, le corsie
 e i punti li decide il server: il telefono manda solo dove hai messo il cestino.
+
+Cade qualcosa in **ogni** corsia, non in una sola: con una corsia sola bastava scansarsi
+e non si perdeva mai una vita, quindi non c'era partita. Una corsia senza bug pero' c'e'
+sempre, cosi' non si esce per sfortuna ma solo per essere stati lenti.
 
 ### Le risposte del quiz le decidi tu
 

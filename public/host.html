@@ -265,28 +265,29 @@ function animaTimer(v) {
 
 function rushView(v, s) {
   if (v.phase === 'via')
-    return `<div class="big">🧺</div><div class="sub">Cestino sulle tre corsie.<br>
-      Prendere 🟢 📝 💎, schivare i 🐛. Ogni presa di fila moltiplica.</div>`;
+    return `<div class="big">🧺</div><div class="sub">Cade qualcosa su tutte e tre le corsie.<br>
+      Prendere 🟢 📝 💎, scappare dai 🐛. Restare fermi non e' mai sicuro.</div>`;
   if (v.phase === 'fine') return podio(s);
-  return `<div class="sub">Oggetto ${v.beat}/${v.tot} · ${v.vivi} ancora in gioco
-      · ${v.bug ? 'BUG, schivatelo!' : v.punti + ' punti'}</div>
+  return `<div class="sub">Oggetto ${v.beat}/${v.tot} · ${v.vivi} ancora in gioco</div>
     <div class="pistaH">
       <div class="corsieH"><div></div><div></div><div></div></div>
       <div class="suoloH"></div>
-      <i class="cadeH" id="cadeH" style="left:${(v.corsia + 0.5) * (100 / v.corsie)}%">${v.e}</i>
+      ${v.caduta.map((o, i) => `<i class="cadeH" id="cadeH${i}" style="left:${(i + 0.5) * (100 / v.corsie)}%">${o.e}</i>`).join('')}
     </div>
     <div class="sub">${v.nomi.map((n) => n.ch + ' ' + esc(n.name) + (n.combo > 1 ? ' x' + n.combo : '')).join('&nbsp;&nbsp; ')}</div>`;
 }
 
 // stessa idea del timer di Salta: una transizione lunga quanto manca alla caduta
 function animaCaduta(v) {
-  const el = $('#cadeH');
-  if (!el) return;
-  el.style.transition = 'none';
-  el.style.top = 74 * (1 - v.into / v.gap) + '%';
-  void el.offsetWidth;
-  el.style.transition = `top ${v.into}ms linear`;
-  el.style.top = '74%';
+  for (let i = 0; i < v.caduta.length; i++) {
+    const el = $('#cadeH' + i);
+    if (!el) continue;
+    el.style.transition = 'none';
+    el.style.top = 74 * (1 - v.into / v.gap) + '%';
+    void el.offsetWidth;
+    el.style.transition = `top ${v.into}ms linear`;
+    el.style.top = '74%';
+  }
 }
 
 const VIEWS = { quiz: quizView, riflessi: riflessiView, insieme: insiemeView, corsa: corsaView, salto: saltoView, rush: rushView };

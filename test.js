@@ -100,7 +100,8 @@ function room(names) {
 
   let t = Date.now(), guard = 0;
   while (r.g.phase !== 'fine' && guard++ < 200) { t += 7000; GAMES.riflessi.tick(r, t); }
-  assert.equal(r.g.phase, 'fine', 'i 5 round finiscono');
+  assert.equal(r.g.phase, 'fine', 'le manche finiscono');
+  assert.ok(r.g.tot >= 8, 'almeno otto manche, era ' + r.g.tot);
 }
 
 // ---------------- insieme
@@ -236,80 +237,94 @@ function room(names) {
   assert.equal(r2.players.get('p0').score, GAMES.salto.TOT * 100 + 200 * GAMES.salto.VITE,
     'punti ostacoli piu bonus finale proporzionale alle vite rimaste');
 
-  // la partita deve durare: almeno mezzo minuto di ostacoli
+  // deve restare lungo ma con il ritmo serrato: mezzo minuto buono, partendo veloce
   let durata = 0;
   for (let b = 0; b < GAMES.salto.TOT; b++) durata += GAMES.salto.gap(b);
-  assert.ok(durata > 40000, 'il giro dura piu di 40 secondi, era ' + Math.round(durata / 1000) + 's');
+  assert.ok(durata > 35000, 'il giro dura piu di 35 secondi, era ' + Math.round(durata / 1000) + 's');
+  assert.ok(GAMES.salto.gap(0) <= 2000, 'si parte gia svelti');
+  assert.ok(GAMES.salto.gap(GAMES.salto.TOT - 1) <= 1000, 'e si finisce tesi');
+  assert.ok(GAMES.salto.AIR < GAMES.salto.gap(GAMES.salto.TOT - 1) * 0.7,
+    'il salto deve finire con margine prima dell ostacolo dopo, altrimenti RESTA GIU e impossibile');
 }
 
 // ---------------- raccogli (Token Rush)
 {
+  const buono = { e: 'g', p: 10, w: 1 };
+  const bug = { e: 'b', p: 0, w: 1, bug: true };
+
   const r = room(['Ada', 'Bruno']);
   r.game = 'rush';
   GAMES.rush.start(r);
   GAMES.rush.tick(r, r.g.until); // via -> gioco
   assert.equal(r.g.phase, 'gioco');
   assert.equal(r.g.vite.get('p0'), GAMES.rush.VITE);
+  assert.equal(r.g.caduta.length, GAMES.rush.CORSIE, 'cade qualcosa in ogni corsia');
 
   const ada = r.players.get('p0'), bruno = r.players.get('p1');
 
-  // oggetto buono: chi ha il cestino sotto lo prende, chi no perde la combo
-  r.g.obj = { e: 'x', p: 10, w: 1 };
-  r.g.corsia = 2;
-  assert.equal(GAMES.rush.input(r, ada, { lane: 2 }), false, 'spostare il cestino non ritrasmette');
-  assert.equal(r.g.cesto.get('p0'), 2, 'ma il cestino si e spostato');
-  GAMES.rush.input(r, bruno, { lane: 0 });
+  // chi sta sotto il buono prende, chi sta sotto il bug perde una vita
+  r.g.caduta = [buono, bug, buono];
+  assert.equal(GAMES.rush.input(r, ada, { lane: 0 }), false, 'spostare il cestino non ritrasmette');
+  assert.equal(r.g.cesto.get('p0'), 0, 'ma il cestino si e spostato');
+  GAMES.rush.input(r, bruno, { lane: 1 });
   assert.ok(!GAMES.rush.input(r, ada, { lane: 9 }), 'corsia fuori range rifiutata');
   r.g.next = Date.now();
   GAMES.rush.tick(r, r.g.next);
-  assert.equal(ada.score, 10, 'preso: punti per uno di combo');
+  assert.equal(ada.score, 10, 'preso');
   assert.equal(r.g.combo.get('p0'), 2, 'la combo sale');
-  assert.equal(bruno.score, 0, 'chi era altrove non prende niente');
-  assert.equal(r.g.combo.get('p1'), 1, 'e resta a combo uno');
+  assert.equal(r.g.vite.get('p1'), GAMES.rush.VITE - 1, 'chi resta sul bug perde una vita');
 
-  // la combo moltiplica
-  r.g.obj = { e: 'x', p: 10, w: 1 };
-  r.g.corsia = r.g.cesto.get('p0');
-  r.g.next = Date.now();
-  GAMES.rush.tick(r, r.g.next);
-  assert.equal(ada.score, 30, 'secondo oggetto di fila: 10 x combo 2');
-  assert.ok(r.g.combo.get('p0') <= GAMES.rush.COMBO_MAX, 'la combo ha un tetto');
-
-  // il bug si schiva: prenderlo costa una vita
-  r.g.obj = { e: 'b', p: 0, w: 1, bug: true };
-  r.g.corsia = r.g.cesto.get('p0');
+  // restare fermi non salva: se sopra di te arriva un bug, lo prendi
+  r.g.caduta = [bug, buono, buono];
   r.g.next = Date.now();
   const primaDelBug = ada.score;
   GAMES.rush.tick(r, r.g.next);
-  assert.equal(r.g.vite.get('p0'), GAMES.rush.VITE - 1, 'il bug costa una vita');
-  assert.equal(r.g.combo.get('p0'), 1, 'e azzera la combo');
+  assert.equal(r.g.vite.get('p0'), GAMES.rush.VITE - 1, 'fermo sotto il bug = vita persa');
+  assert.equal(r.g.combo.get('p0'), 1, 'e combo azzerata');
   assert.equal(ada.score, primaDelBug, 'senza togliere punti gia fatti');
-  assert.equal(r.g.vite.get('p1'), GAMES.rush.VITE, 'chi lo schiva non perde niente');
 
-  // tre bug e si esce
-  for (let k = 0; k < 2; k++) {
-    r.g.obj = { e: 'b', p: 0, w: 1, bug: true };
-    r.g.corsia = r.g.cesto.get('p0');
+  // la combo moltiplica (la caduta va rimessa prima di ogni tick: il tick ne pesca una nuova)
+  r.g.caduta = [buono, buono, buono];
+  r.g.next = Date.now();
+  GAMES.rush.tick(r, r.g.next); // combo 1 -> prende 10, sale a 2
+  r.g.caduta = [buono, buono, buono];
+  r.g.next = Date.now();
+  GAMES.rush.tick(r, r.g.next); // combo 2 -> prende 20
+  assert.equal(ada.score, primaDelBug + 10 + 20, 'la combo moltiplica la presa dopo');
+  assert.ok(r.g.combo.get('p0') <= GAMES.rush.COMBO_MAX, 'la combo ha un tetto');
+
+  // finite le vite si esce
+  while (r.g.vite.get('p0') > 0) {
+    r.g.caduta = [bug, bug, buono];
+    GAMES.rush.input(r, ada, { lane: 0 });
     r.g.next = Date.now();
     GAMES.rush.tick(r, r.g.next);
   }
-  assert.equal(r.g.vite.get('p0'), 0, 'vite finite');
   assert.ok(r.g.fuori.get('p0') > 0, 'segnato a quale oggetto e uscito');
   assert.ok(!GAMES.rush.input(r, ada, { lane: 1 }), 'chi e fuori non muove piu il cestino');
 
-  // arriva in fondo e prende il bonus sulle vite rimaste
+  // mai tre bug insieme: non si deve morire per sfortuna
+  for (let k = 0; k < 400; k++) {
+    assert.ok(GAMES.rush._pescaCorsie().some((o) => !o.bug), 'una corsia sicura c e sempre');
+  }
+
+  // e il ritmo e' svelto
+  assert.ok(GAMES.rush.gap(0) <= 1800, 'si parte svelti');
+  assert.ok(GAMES.rush.gap(GAMES.rush.TOT - 1) <= 800, 'e si finisce tesi');
+
+  // giocando bene si arriva in fondo con le vite intatte
   const r2 = room(['Solo']);
   r2.game = 'rush';
   GAMES.rush.start(r2);
   GAMES.rush.tick(r2, r2.g.until);
   let guard = 0;
-  while (r2.g.phase !== 'fine' && guard++ < 200) {
-    // gioca bene: si mette sotto gli oggetti buoni e schiva i bug
-    GAMES.rush.input(r2, r2.players.get('p0'), { lane: r2.g.obj.bug ? (r2.g.corsia + 1) % 3 : r2.g.corsia });
+  while (r2.g.phase !== 'fine' && guard++ < 300) {
+    const sicura = r2.g.caduta.findIndex((o) => !o.bug);
+    GAMES.rush.input(r2, r2.players.get('p0'), { lane: sicura });
     r2.g.next = Date.now();
     GAMES.rush.tick(r2, r2.g.next);
   }
-  assert.equal(r2.g.vite.get('p0'), GAMES.rush.VITE, 'giocando bene non si perdono vite');
+  assert.equal(r2.g.vite.get('p0'), GAMES.rush.VITE, 'scegliendo sempre la corsia sicura non si perdono vite');
   assert.ok(r2.players.get('p0').score > GAMES.rush.TOT * 10, 'e il punteggio cresce con la combo');
 }
 

@@ -204,7 +204,7 @@ GAMES.riflessi = {
 
   start(room) {
     room.level = null;
-    room.g = { round: 0, tot: 5, phase: 'attesa', until: Date.now() + rnd(2500, 6000), go: 0, taps: new Map() };
+    room.g = { round: 0, tot: 8, phase: 'attesa', until: Date.now() + rnd(2000, 5500), go: 0, taps: new Map() };
     resetScores(room);
   },
 
@@ -230,7 +230,7 @@ GAMES.riflessi = {
       }
       g.best = best;
       g.phase = 'esito';
-      g.until = now + 4500;
+      g.until = now + 3500;
       return true;
     }
     g.round++;
@@ -240,7 +240,7 @@ GAMES.riflessi = {
     }
     g.taps = new Map();
     g.phase = 'attesa';
-    g.until = now + rnd(2500, 6000);
+    g.until = now + rnd(2000, 5500);
     return true;
   },
 
@@ -483,12 +483,12 @@ GAMES.salto = {
   // quindi si trasmette solo quando un ostacolo si risolve. Meno traffico e soprattutto
   // niente scatti da 150 millisecondi.
   live: [],
-  TOT: 24,
-  AIR: 800,  // quanto resti per aria dopo il tocco
+  TOT: 34,
+  AIR: 600,  // quanto resti per aria dopo il tocco: corto, cosi' il salto e' scattante
   VITE: 3,   // tre errori prima di uscire: cosi' si gioca fino in fondo, non 20 secondi
 
   gap(beat) {
-    return Math.max(1150, 2700 - beat * 90);
+    return Math.max(1000, 2000 - beat * 100);
   },
 
   start(room) {
@@ -512,7 +512,7 @@ GAMES.salto = {
       if (now < g.until) return false;
       g.phase = 'corsa';
       g.tipo = Math.random() < 0.5 ? 0 : 1;
-      g.next = now + 2700;
+      g.next = now + 2000;
       return true;
     }
 
@@ -614,7 +614,17 @@ GAMES.rush = {
   ],
 
   gap(beat) {
-    return Math.max(950, 2300 - beat * 75);
+    return Math.max(750, 1800 - beat * 70);
+  },
+
+  // Una corsia sola occupata rendeva il gioco gratis: bastava scansarsi e non si
+  // perdeva mai una vita. Ora cade qualcosa in ogni corsia e bisogna scegliere,
+  // ma almeno una e' sempre sicura: non si muore per sfortuna.
+  _pescaCorsie() {
+    const c = [];
+    for (let i = 0; i < this.CORSIE; i++) c.push(this._pesca());
+    if (c.every((o) => o.bug)) c[(Math.random() * this.CORSIE) | 0] = this.OGGETTI[0];
+    return c;
   },
 
   _pesca() {
@@ -639,8 +649,7 @@ GAMES.rush = {
       phase: 'via',
       until: Date.now() + 3500,
       beat: 0,
-      corsia: 1,
-      obj: this.OGGETTI[0],
+      caduta: [this.OGGETTI[0], this.OGGETTI[0], this.OGGETTI[0]],
       next: 0,
       cesto: new Map(), // corsia scelta da ogni giocatore
       vite: new Map(),
@@ -663,9 +672,8 @@ GAMES.rush = {
     if (g.phase === 'via') {
       if (now < g.until) return false;
       g.phase = 'gioco';
-      g.obj = this._pesca();
-      g.corsia = (Math.random() * this.CORSIE) | 0;
-      g.next = now + 2300;
+      g.caduta = this._pescaCorsie();
+      g.next = now + 1800;
       return true;
     }
 
@@ -674,24 +682,17 @@ GAMES.rush = {
     for (const [pid, vite] of g.vite) {
       if (vite <= 0) continue;
       const p = room.players.get(pid);
-      const sotto = (g.cesto.get(pid) || 0) === g.corsia;
-      if (g.obj.bug) {
-        if (sotto) {
-          g.vite.set(pid, vite - 1);
-          g.combo.set(pid, 1);
-          g.preso.set(pid, 'bug');
-          if (vite - 1 <= 0) g.fuori.set(pid, g.beat + 1);
-        } else {
-          g.preso.set(pid, 'schivato');
-        }
-      } else if (sotto) {
+      const sotto = g.caduta[g.cesto.get(pid) || 0];
+      if (sotto.bug) {
+        g.vite.set(pid, vite - 1);
+        g.combo.set(pid, 1);
+        g.preso.set(pid, 'bug');
+        if (vite - 1 <= 0) g.fuori.set(pid, g.beat + 1);
+      } else {
         const combo = g.combo.get(pid) || 1;
-        if (p) p.score += g.obj.p * combo;
+        if (p) p.score += sotto.p * combo;
         g.combo.set(pid, Math.min(this.COMBO_MAX, combo + 1));
         g.preso.set(pid, 'preso');
-      } else {
-        g.combo.set(pid, 1);
-        g.preso.set(pid, 'perso');
       }
     }
     g.beat++;
@@ -704,8 +705,7 @@ GAMES.rush = {
       g.phase = 'fine';
       return true;
     }
-    g.obj = this._pesca();
-    g.corsia = (Math.random() * this.CORSIE) | 0;
+    g.caduta = this._pescaCorsie();
     g.next = now + this.gap(g.beat);
     return true;
   },
@@ -726,10 +726,7 @@ GAMES.rush = {
       phase: g.phase,
       beat: g.beat + 1,
       tot: this.TOT,
-      e: g.obj.e,
-      bug: g.obj.bug ? 1 : 0,
-      punti: g.obj.p,
-      corsia: g.corsia,
+      caduta: g.caduta.map((o) => ({ e: o.e, bug: o.bug ? 1 : 0, p: o.p })),
       corsie: this.CORSIE,
       into: Math.max(0, g.next - now),
       gap: this.gap(g.beat),
@@ -748,10 +745,7 @@ GAMES.rush = {
       phase: g.phase,
       beat: g.beat + 1,
       tot: this.TOT,
-      e: g.obj.e,
-      bug: g.obj.bug ? 1 : 0,
-      punti: g.obj.p,
-      corsia: g.corsia,
+      caduta: g.caduta.map((o) => ({ e: o.e, bug: o.bug ? 1 : 0, p: o.p })),
       corsie: this.CORSIE,
       into: Math.max(0, g.next - now),
       gap: this.gap(g.beat),

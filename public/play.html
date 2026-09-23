@@ -113,7 +113,7 @@ const LET = ['A','B','C','D'];
 const esc = (s) => String(s).replace(/[<>&]/g, (c) => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
 const qs = new URLSearchParams(location.search);
 
-let lastGame = null;
+let lastGame = null, ultimaPct = 0;
 let ws, pid = null, code = (qs.get('r') || '').toUpperCase(), joined = false, lastHtml = '';
 
 function store(c) { try { return localStorage.getItem('pid:' + c); } catch { return null; } }
@@ -239,12 +239,14 @@ function riflessiV(v, s) {
 function insiemeV(v, s) {
   if (v.phase === 'fine') return fineV(s);
   if (v.phase === 'esito') return `<div class="pad res">${v.won ? 'FATTO! 🎉' : 'Quasi…'}</div>`;
+  ultimaPct = v.pct;
   return `<div id="live" style="display:flex;flex-direction:column;gap:14px;flex:1">
     <button class="pad tap" data-tap="1">BATTI!<br><span style="font-size:.5em" id="taps">${v.taps} tocchi</span></button>
     <div class="bar"><div id="fill" style="width:${v.pct}%"></div></div>
     <div class="mid" id="meta">Round ${v.n}/${v.tot} · ${v.left}s · ${v.pct}%</div></div>`;
 }
 function insiemeP(v) {
+  ultimaPct = v.pct;
   $('#fill').style.width = v.pct + '%';
   $('#taps').textContent = v.taps + ' tocchi';
   $('#meta').textContent = `Round ${v.n}/${v.tot} · ${v.left}s · ${v.pct}%`;
@@ -365,8 +367,8 @@ function rushV(v, s) {
   if (v.phase === 'via') {
     rushLane = v.cesto;
     return `<div class="hero">${s.ch}</div>
-      <div class="mid">Sposta il cestino sulle tre corsie.<br>
-      Prendi 🟢 📝 💎, <b>schiva i 🐛</b>.<br><br>Ogni presa di fila moltiplica i punti.
+      <div class="mid">Cade qualcosa su <b>tutte e tre</b> le corsie.<br>
+      Mettiti sotto 🟢 📝 💎, <b>scappa dai</b> 🐛.<br><br>Restare fermi non e' mai sicuro.
       <br>Hai ${v.viteMax} vite: ${'❤️'.repeat(v.viteMax)}</div>`;
   }
   if (v.phase === 'fine') return fineV(s);
@@ -380,7 +382,7 @@ function rushV(v, s) {
     <div class="mid" id="meta"></div>
     <div class="pista">
       <div class="suolo"></div>
-      <i class="cade" id="cade" style="left:${corsiaX(v.corsia)}%">${v.e}</i>
+      ${v.caduta.map((o, i) => `<i class="cade" id="cade${i}" style="left:${corsiaX(i)}%">${o.e}</i>`).join('')}
       <i class="cesto" id="cesto" style="left:${corsiaX(v.cesto)}%">${s.ch}</i>
       <div class="corsie">
         <button data-lane="0"></button><button data-lane="1"></button><button data-lane="2"></button>
@@ -388,26 +390,25 @@ function rushV(v, s) {
     </div></div>`;
 }
 
-// Come per Salta: una sola animazione per oggetto, lunga quanto manca davvero.
+// Come per Salta: una sola animazione per giro, lunga quanto manca davvero.
 function cadeOggetto(v) {
-  const el = $('#cade');
-  if (!el) return;
   const da = CADUTA_FINE * (1 - v.into / v.gap);
-  el.style.transition = 'none';
-  el.style.top = da + '%';
-  el.style.left = corsiaX(v.corsia) + '%';
-  void el.offsetWidth;
-  el.style.transition = `top ${v.into}ms linear`;
-  el.style.top = CADUTA_FINE + '%';
+  for (let i = 0; i < v.caduta.length; i++) {
+    const el = $('#cade' + i);
+    if (!el) continue;
+    el.textContent = v.caduta[i].e;
+    el.style.transition = 'none';
+    el.style.top = da + '%';
+    void el.offsetWidth;
+    el.style.transition = `top ${v.into}ms linear`;
+    el.style.top = CADUTA_FINE + '%';
+  }
 }
 
 function rushP(v, s) {
-  const el = $('#cade');
-  el.textContent = v.e;
   $('#cesto').textContent = s.ch;
   $('#meta').innerHTML = `${v.beat}/${v.tot} · <span class="cuori">${cuori(v)}</span>`
-    + (v.combo > 1 ? ` · <b>x${v.combo}</b>` : '')
-    + (v.bug ? ' · <b>🐛 schiva!</b>' : ` · ${v.punti} punti`);
+    + (v.combo > 1 ? ` · <b>x${v.combo}</b>` : '');
   rushLane = v.cesto;
   muoviCesto();
   cadeOggetto(v);
@@ -425,6 +426,7 @@ $('#main').addEventListener('click', (e) => {
   if (navigator.vibrate) navigator.vibrate(12);
   if (b.dataset.skin) return ws.send(JSON.stringify({ t: 'skin' }));
   if (b.id === 'jump') { salta(); return ws.send(JSON.stringify({ tap: 1 })); }
+  if (b.classList.contains('tap')) colpo(240 + ultimaPct * 4); // Insieme: il tono sale col riempirsi della barra
   if (b.dataset.lane && G[lastGame] === G.rush) {
     rushLane = +b.dataset.lane;
     muoviCesto(); // si muove al tocco, senza aspettare il giro di rete
@@ -437,6 +439,28 @@ $('#main').addEventListener('click', (e) => {
   }
   ws.send(JSON.stringify(b.dataset.tap ? { tap: 1 } : { pick: +b.dataset.pick }));
 });
+
+// Un colpo secco a ogni battuta. Generato al volo: nessun file da scaricare, e il
+// contesto audio nasce al primo tocco, l'unico momento in cui iOS lo lascia partire.
+let ac = null;
+function colpo(freq) {
+  try {
+    if (!ac) ac = new (window.AudioContext || window.webkitAudioContext)();
+    if (ac.state === 'suspended') ac.resume();
+    const t = ac.currentTime;
+    const osc = ac.createOscillator();
+    const vol = ac.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(freq, t);
+    osc.frequency.exponentialRampToValueAtTime(freq * 0.7, t + 0.09);
+    vol.gain.setValueAtTime(0.0001, t);
+    vol.gain.exponentialRampToValueAtTime(0.3, t + 0.004);
+    vol.gain.exponentialRampToValueAtTime(0.0001, t + 0.1);
+    osc.connect(vol).connect(ac.destination);
+    osc.start(t);
+    osc.stop(t + 0.11);
+  } catch {} // telefono in silenzioso o audio negato: si gioca lo stesso
+}
 
 // lo schermo del telefono non deve bloccarsi a meta' partita
 async function wake() { try { await navigator.wakeLock.request('screen'); } catch {} }
