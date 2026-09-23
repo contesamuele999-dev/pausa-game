@@ -27,7 +27,15 @@ Formato: `{ "q": "domanda", "o": ["a","b","c","d"], "c": 1 }` dove `c` è l'indi
 Ne servono almeno 8 per livello, il gioco ne pesca 8 a caso. **Sostituiscile con le tue**:
 quelle attuali sono sui meccanismi di memoria e apprendimento, a tema con le pause, ma generiche.
 
-## Locale
+## Locale (Windows, doppio click)
+
+- **`avvia.bat`** — installa le dipendenze la prima volta, trova l'IP del portatile sulla rete,
+  avvia il server e apre lo schermo del proiettore. I telefoni sulla stessa wifi inquadrano il QR.
+  Per fermare tutto: chiudi la finestra "Pausa Game - server".
+- **`pusha.bat`** — salva su GitHub. Chiede il messaggio (invio = "aggiornamenti"), e se il
+  repository non esiste ancora lo crea privato. Serve [GitHub CLI](https://cli.github.com) loggato.
+
+## Locale (da terminale)
 
 ```bash
 npm install
