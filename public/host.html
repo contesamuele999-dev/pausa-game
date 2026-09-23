@@ -54,6 +54,21 @@
   .bar{height:12vh;border-radius:999px;background:#0e1530;border:1px solid var(--line);overflow:hidden}
   .bar>div{height:100%;background:linear-gradient(90deg,#3b82f6,#22c55e);transition:width .12s linear}
 
+  /* corsa */
+  .lanes{display:flex;flex-direction:column;gap:.9vh;overflow:hidden}
+  .lane{display:flex;align-items:center;gap:.8rem;font-size:clamp(13px,1.3vw,22px)}
+  .lane u{text-decoration:none;color:var(--dim);min-width:1.6em;text-align:right}
+  .lane em{font-style:normal;min-width:7em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .track{flex:1;height:3.4vh;border-radius:999px;background:#0e1530;border:1px solid var(--line);position:relative}
+  .track i{position:absolute;top:50%;transform:translate(-50%,-50%);font-style:normal;font-size:2.6vh;transition:left .12s linear}
+  .turbo{filter:drop-shadow(0 0 7px #fbbf24)}
+
+  /* salta */
+  .run{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2vh}
+  .sign{font-size:clamp(60px,12vw,190px);line-height:1}
+  .timer{width:70%;height:3vh;border-radius:999px;background:#0e1530;border:1px solid var(--line);overflow:hidden}
+  .timer>div{height:100%;background:#f59e0b}
+
   ol.board{list-style:none;margin:0;padding:0;overflow:auto}
   ol.board li{display:flex;align-items:center;gap:1rem;padding:.7vh .4rem;font-size:clamp(15px,1.5vw,26px);border-bottom:1px solid var(--line)}
   ol.board li span{color:var(--dim);min-width:2.2em}
@@ -101,6 +116,9 @@
           <button data-g="quiz" data-l="adulti">Quiz adulti</button>
           <button data-g="riflessi">Riflessi</button>
           <button data-g="insieme">Insieme</button>
+          <button data-g="corsa">Corsa 🏎️</button>
+          <button data-g="salto">Salta 🦘</button>
+          <button class="go hide" id="bnext" style="grid-column:span 2">Avanti</button>
           <button class="stop hide" id="bstop">Termina</button>
         </div>
       </div>
@@ -147,7 +165,12 @@ function render(s) {
   }
   $('#board').innerHTML = s.players.slice(0, 12)
     .map((p) => `<li><span>${p.rank}</span>${esc(p.name)}<b>${p.score}</b></li>`).join('');
-  $('#stagebox').innerHTML = ({ quiz: quizView, riflessi: riflessiView, insieme: insiemeView })[s.game](s.view, s);
+  $('#stagebox').innerHTML = VIEWS[s.game](s.view, s);
+
+  // le fasi che avanzano solo su decisione dell'host espongono un'etichetta
+  const lab = s.view && s.view.nextLabel;
+  $('#bnext').classList.toggle('hide', !lab);
+  if (lab) $('#bnext').textContent = lab;
 }
 
 function podio(s) {
@@ -160,14 +183,58 @@ function podio(s) {
 function quizView(v, s) {
   if (v.phase === 'via') return `<div class="big">Si parte!</div><div class="sub">${v.tot} domande</div>`;
   if (v.phase === 'fine') return podio(s);
-  const rev = v.phase === 'risposta';
-  return `<div class="sub">Domanda ${v.n}/${v.tot} · ${rev ? 'Risposta' : v.left + 's · ' + v.answered + ' risposte'}</div>
+
+  if (v.phase === 'stacco')
+    return `<div class="big">Segnata ✍️</div>
+      <div class="sub">Domanda ${v.n}/${v.tot} chiusa · ${v.answered} risposte su ${v.players}</div>
+      <div class="sub" style="margin-top:2vh">Le risposte giuste alla fine, tutte insieme.</div>`;
+
+  // ripasso: l'host scorre le risposte giuste una per una
+  if (v.phase === 'ripasso') {
+    if (v.r < 0)
+      return `<div class="big">Finito! 🎯</div>
+        <div class="sub" style="margin-top:2vh">${v.tot} domande in cassaforte.<br>Quando vuoi, sveliamo le risposte.</div>`;
+    return `<div class="sub">Risposta ${v.n}/${v.tot}</div>
+      <p class="q">${esc(v.q)}</p>
+      <div class="opts">${v.o.map((o, i) => `
+        <div class="opt o${i} ${i === v.c ? 'win' : 'dim'}"><i>${LET[i]}</i>${esc(o)}<b>${v.counts[i]}</b></div>`).join('')}</div>`;
+  }
+
+  return `<div class="sub">Domanda ${v.n}/${v.tot} · ${v.left}s · ${v.answered} risposte</div>
     <p class="q">${esc(v.q)}</p>
     <div class="opts">${v.o.map((o, i) => `
-      <div class="opt o${i} ${rev ? (i === v.c ? 'win' : 'dim') : ''}">
-        <i>${LET[i]}</i>${esc(o)}${rev ? `<b>${v.counts[i]}</b>` : ''}
-      </div>`).join('')}</div>`;
+      <div class="opt o${i}"><i>${LET[i]}</i>${esc(o)}</div>`).join('')}</div>`;
 }
+
+function corsaView(v, s) {
+  if (v.phase === 'via')
+    return `<div class="big">🏁</div><div class="sub">Alterna i due pedali, sinistra-destra-sinistra…<br>Sbagliare pedale ti fa sgommare.</div>`;
+  if (v.phase === 'fine')
+    return `<div class="big">🏁 ${v.fin.length ? esc(v.fin[0]) : 'Nessuno al traguardo'}</div>
+      <div class="sub">${v.fin.slice(0, 3).map((n, i) => '🥇🥈🥉'[i] + ' ' + esc(n)).join('  ')}</div>
+      ${podio(s)}`;
+  return `<div class="sub">${v.left}s al termine</div>
+    <div class="lanes" style="margin-top:2vh">${v.piloti.map((p, i) => `
+      <div class="lane"><u>${i + 1}</u><em>${esc(p.name)}</em>
+        <div class="track"><i class="${p.turbo ? 'turbo' : ''}" style="left:${Math.max(3, p.pct)}%">${p.turbo ? '🚀' : '🏎️'}</i></div>
+        <b style="min-width:2.6em;text-align:right">${p.pct}%</b></div>`).join('')}</div>`;
+}
+
+function saltoView(v, s) {
+  if (v.phase === 'via')
+    return `<div class="big">🦘</div><div class="sub">🌵 a terra: <b>salta</b>. 🦅 in alto: <b>resta giù</b>.<br>Chi sbaglia esce.</div>`;
+  if (v.phase === 'fine') return podio(s);
+  const pct = Math.round((v.into / v.gap) * 100);
+  return `<div class="sub">Ostacolo ${v.beat}/${v.tot} · ${v.vivi} ancora in pista</div>
+    <div class="run">
+      <div class="sign">${v.tipo === 0 ? '🌵' : '🦅'}</div>
+      <div class="big" style="font-size:clamp(22px,3vw,48px)">${v.tipo === 0 ? 'SALTA!' : 'RESTA GIÙ!'}</div>
+      <div class="timer"><div style="width:${pct}%"></div></div>
+    </div>
+    <div class="sub">${v.nomi.map(esc).join(' · ')}</div>`;
+}
+
+const VIEWS = { quiz: quizView, riflessi: riflessiView, insieme: insiemeView, corsa: corsaView, salto: saltoView };
 
 function riflessiView(v, s) {
   if (v.phase === 'fine') return podio(s);
@@ -192,6 +259,7 @@ $('#menu').addEventListener('click', (e) => {
   const b = e.target.closest('button');
   if (!b) return;
   if (b.id === 'bstop') return ws.send(JSON.stringify({ t: 'stop' }));
+  if (b.id === 'bnext') return ws.send(JSON.stringify({ t: 'next' }));
   ws.send(JSON.stringify({ t: 'start', game: b.dataset.g, level: b.dataset.l }));
 });
 

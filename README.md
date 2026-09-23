@@ -1,7 +1,7 @@
 # Pausa Game
 
 Giochi multiplayer da telefono per le pause delle conferenze. Il pubblico inquadra un QR,
-entra e gioca insieme. Tre meccaniche, una sola classifica per partita, premi ai primi.
+entra e gioca insieme. Cinque meccaniche, una classifica per partita, premi ai primi.
 
 ## Come si usa in sala
 
@@ -12,13 +12,23 @@ entra e gioca insieme. Tre meccaniche, una sola classifica per partita, premi ai
 
 Il refresh della pagina host non perde la stanza. Chi blocca il telefono rientra e ritrova i suoi punti.
 
-## I tre giochi
+## I cinque giochi
 
 | Gioco | Per chi | Come funziona | Durata |
 |---|---|---|---|
-| **Quiz** | bambini / ragazzi / adulti (3 set separati) | 8 domande, 4 risposte. Punti per correttezza + velocità (500 + fino a 500 bonus). | ~3 min |
+| **Quiz** | bambini / ragazzi / adulti (3 set separati) | 8 domande, 4 risposte. Punti per correttezza + velocità (500 + fino a 500 bonus). Le soluzioni si vedono solo nel ripasso finale. | ~3 min |
 | **Riflessi** | tutti, ottimo per i bambini (non serve leggere) | 5 round. Schermo rosso, poi verde: chi tocca prima vince. Partenza anticipata = 0 punti. | ~1 min |
 | **Insieme** | tutta la sala, cooperativo | 3 round da 30s. Tutti battono sul telefono per riempire una barra che si svuota da sola. Se ce la fate, punti a tutti (di più a chi ha battuto di più). | ~2 min |
+| **Corsa** 🏎️ | dai 6 anni in su | Kart. Si avanza alternando i due pedali, sinistra-destra-sinistra. Martellare sempre lo stesso non porta da nessuna parte. Pedana turbo ogni 25 metri, podio ai primi tre al traguardo. | ~1 min |
+| **Salta** 🦘 | tutti, a eliminazione | Arrivano ostacoli a tempo: 🌵 a terra si salta, 🦅 in alto si resta giù. Chi sbaglia esce e guarda gli altri. Gli ostacoli si avvicinano sempre di più. | ~30s |
+
+### Le risposte del quiz le decidi tu
+
+Durante il quiz nessuno vede la soluzione: né lo schermo né i telefoni. Si risponde e si passa
+avanti. Alla fine dell'ottava domanda lo schermo si ferma e compare **Mostra le risposte**:
+da lì le scorri una alla volta con **Avanti**, con la soluzione evidenziata e quante persone
+avevano scelto ciascuna opzione. Ogni telefono mostra in parallelo cosa aveva risposto il suo
+proprietario. L'ultimo **Avanti** porta alla classifica.
 
 ## Le domande
 
@@ -101,7 +111,7 @@ Un redirect/proxy Netlify **non** va bene: non inoltra l'upgrade WebSocket.
 ## File
 
 ```
-server.js        server + le tre meccaniche di gioco
+server.js        server + le cinque meccaniche di gioco
 questions.json   le domande del quiz, per fascia d'età
 public/host.html schermo grande (proiettore)
 public/play.html telefono

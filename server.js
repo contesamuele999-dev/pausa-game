@@ -41,13 +41,26 @@ function resetScores(room) {
   for (const p of room.players.values()) p.score = 0;
 }
 
+// Anti-autoclicker condiviso dai giochi a tocchi ripetuti.
+function tooFast(p, ms) {
+  const now = Date.now();
+  if (now - (p.lastTap || 0) < ms) return true;
+  p.lastTap = now;
+  return false;
+}
+
 // ---------------------------------------------------------------- giochi
+// Ogni gioco: start / tick / input / hostView / playerView.
+// `live` elenca le fasi da ritrasmettere a ogni tick (barre e countdown che scorrono).
+// `hostInput` opzionale: fasi che avanzano solo quando lo decide l'host.
 
 const GAMES = {};
 
-// --- Quiz: domanda + 4 risposte, punti per correttezza e velocita'.
+// --- Quiz: le risposte giuste NON si vedono durante la partita.
+//     A fine giro l'host apre il ripasso e le scorre una per una davanti alla sala.
 GAMES.quiz = {
   label: 'Quiz',
+  live: ['domanda'],
   levels: { bambini: 25, ragazzi: 20, adulti: 20 },
 
   start(room, opts) {
@@ -61,15 +74,16 @@ GAMES.quiz = {
       phase: 'via',
       until: Date.now() + 3000,
       t0: 0,
-      ans: new Map()
+      ans: new Map(),
+      log: [], // per ogni domanda: chi ha scelto cosa, serve al ripasso finale
+      r: -1
     };
     resetScores(room);
   },
 
   tick(room, now) {
     const g = room.g;
-    if (g.phase === 'fine') return false;
-    // tutti hanno risposto: non far aspettare la sala
+    if (g.phase === 'ripasso' || g.phase === 'fine') return false; // da qui avanza solo l'host
     if (g.phase === 'domanda' && room.players.size > 0 && g.ans.size >= room.players.size) g.until = now;
     if (now < g.until) return false;
 
@@ -81,14 +95,19 @@ GAMES.quiz = {
         const speed = 1 - clamp((a.at - g.t0) / g.dur, 0, 1);
         p.score += 500 + Math.round(500 * speed);
       }
-      g.phase = 'risposta';
-      g.until = now + 6000;
+      g.log.push({
+        picks: new Map([...g.ans].map(([pid, a]) => [pid, a.pick])),
+        counts: q.o.map((_, k) => [...g.ans.values()].filter((a) => a.pick === k).length)
+      });
+      g.phase = 'stacco';
+      g.until = now + 2500;
       return true;
     }
 
     g.i++;
     if (g.i >= g.qs.length) {
-      g.phase = 'fine';
+      g.phase = 'ripasso';
+      g.r = -1;
       return true;
     }
     g.ans = new Map();
@@ -108,33 +127,67 @@ GAMES.quiz = {
     return true;
   },
 
+  hostInput(room, m) {
+    const g = room.g;
+    if (m.t !== 'next' || g.phase !== 'ripasso') return false;
+    g.r++;
+    if (g.r >= g.qs.length) g.phase = 'fine';
+    return true;
+  },
+
   hostView(room, now) {
     const g = room.g;
-    const q = g.qs[g.i];
-    const v = { phase: g.phase, n: g.i + 1, tot: g.qs.length, left: Math.max(0, Math.ceil((g.until - now) / 1000)) };
-    if (g.phase === 'via' || g.phase === 'fine') return v;
-    v.q = q.q;
-    v.o = q.o;
-    v.answered = g.ans.size;
-    if (g.phase === 'risposta') {
-      v.c = q.c;
-      v.counts = q.o.map((_, i) => [...g.ans.values()].filter((a) => a.pick === i).length);
+    if (g.phase === 'via') return { phase: g.phase, tot: g.qs.length };
+    if (g.phase === 'fine') return { phase: g.phase };
+    if (g.phase === 'ripasso') {
+      const v = {
+        phase: g.phase,
+        tot: g.qs.length,
+        r: g.r,
+        nextLabel: g.r < 0 ? 'Mostra le risposte' : g.r >= g.qs.length - 1 ? 'Classifica' : 'Avanti'
+      };
+      if (g.r >= 0) {
+        const q = g.qs[g.r];
+        Object.assign(v, { n: g.r + 1, q: q.q, o: q.o, c: q.c, counts: g.log[g.r].counts });
+      }
+      return v;
+    }
+    const v = {
+      phase: g.phase,
+      n: g.i + 1,
+      tot: g.qs.length,
+      left: Math.max(0, Math.ceil((g.until - now) / 1000)),
+      answered: g.ans.size,
+      players: room.players.size
+    };
+    if (g.phase === 'domanda') {
+      const q = g.qs[g.i];
+      v.q = q.q;
+      v.o = q.o;
     }
     return v;
   },
 
   playerView(room, p, now) {
     const g = room.g;
+    if (g.phase === 'via') return { phase: g.phase, tot: g.qs.length };
+    if (g.phase === 'fine') return { phase: g.phase };
+    if (g.phase === 'ripasso') {
+      const v = { phase: g.phase, tot: g.qs.length, r: g.r };
+      if (g.r >= 0) {
+        const q = g.qs[g.r];
+        const pick = g.log[g.r].picks.get(p.pid);
+        Object.assign(v, { n: g.r + 1, q: q.q, o: q.o, c: q.c, pick: pick == null ? null : pick, ok: pick === q.c });
+      }
+      return v;
+    }
     const v = { phase: g.phase, n: g.i + 1, tot: g.qs.length, left: Math.max(0, Math.ceil((g.until - now) / 1000)) };
-    if (g.phase === 'via' || g.phase === 'fine') return v;
-    const q = g.qs[g.i];
-    const a = g.ans.get(p.pid);
-    v.q = q.q;
-    v.o = q.o;
-    v.pick = a ? a.pick : null;
-    if (g.phase === 'risposta') {
-      v.c = q.c;
-      v.ok = a ? a.pick === q.c : false;
+    if (g.phase === 'domanda') {
+      const q = g.qs[g.i];
+      const a = g.ans.get(p.pid);
+      v.q = q.q;
+      v.o = q.o;
+      v.pick = a ? a.pick : null;
     }
     return v;
   }
@@ -143,6 +196,7 @@ GAMES.quiz = {
 // --- Riflessi: schermo rosso, poi verde. Chi tocca prima vince. Partenza anticipata = 0.
 GAMES.riflessi = {
   label: 'Riflessi',
+  live: [],
 
   start(room) {
     room.level = null;
@@ -175,7 +229,6 @@ GAMES.riflessi = {
       g.until = now + 4500;
       return true;
     }
-    // esito -> round successivo
     g.round++;
     if (g.round >= g.tot) {
       g.phase = 'fine';
@@ -202,7 +255,7 @@ GAMES.riflessi = {
     return false;
   },
 
-  hostView(room, now) {
+  hostView(room) {
     const g = room.g;
     const v = { phase: g.phase, n: g.round + 1, tot: g.tot };
     if (g.phase === 'esito') {
@@ -225,8 +278,8 @@ GAMES.riflessi = {
 // --- Insieme: barra collettiva che si svuota da sola. Tutti battono, la sala urla.
 GAMES.insieme = {
   label: 'Insieme',
+  live: ['play'],
   DECAY: 9, // punti barra persi al secondo
-  TAP_MIN_MS: 50, // anti click-spam / autoclicker
 
   start(room) {
     room.level = null;
@@ -280,9 +333,7 @@ GAMES.insieme = {
   input(room, p, m) {
     const g = room.g;
     if (m.tap !== 1 || g.phase !== 'play') return false;
-    const now = Date.now();
-    if (now - (p.lastTap || 0) < this.TAP_MIN_MS) return false;
-    p.lastTap = now;
+    if (tooFast(p, 50)) return false;
     g.taps.set(p.pid, (g.taps.get(p.pid) || 0) + 1);
     g.prog += 1;
     return true;
@@ -310,6 +361,216 @@ GAMES.insieme = {
       left: Math.max(0, Math.ceil((g.until - now) / 1000)),
       taps: g.taps.get(p.pid) || 0,
       won: g.won
+    };
+  }
+};
+
+// --- Corsa: kart. Si avanza alternando i due pedali, sinistra-destra-sinistra.
+//     Pestare sempre lo stesso pedale fa sgommare e perdere terreno.
+//     Ogni 25 metri c'e' una pedana turbo. Primi tre sul podio.
+GAMES.corsa = {
+  label: 'Corsa',
+  live: ['gara'],
+  META: 100,
+  TURBO: 25,
+  BOOST: 6,
+
+  start(room) {
+    room.level = null;
+    room.g = {
+      phase: 'via',
+      until: Date.now() + 3500,
+      pos: new Map(),
+      exp: new Map(), // pedale atteso: 0 sinistra, 1 destra
+      boost: new Map(),
+      fin: []
+    };
+    resetScores(room);
+  },
+
+  tick(room, now) {
+    const g = room.g;
+    if (g.phase === 'fine') return false;
+
+    if (g.phase === 'via') {
+      if (now < g.until) return false;
+      g.phase = 'gara';
+      g.until = now + 75000;
+      return true;
+    }
+
+    const quanti = Math.min(3, Math.max(1, room.players.size));
+    if (g.fin.length < quanti && now < g.until) return false;
+
+    const podio = [1000, 700, 500];
+    g.fin.forEach((pid, i) => {
+      const p = room.players.get(pid);
+      if (p) p.score += podio[i] != null ? podio[i] : 400;
+    });
+    for (const p of room.players.values()) {
+      if (g.fin.includes(p.pid)) continue;
+      p.score += Math.round(clamp((g.pos.get(p.pid) || 0) / this.META, 0, 1) * 350);
+    }
+    g.phase = 'fine';
+    return true;
+  },
+
+  input(room, p, m) {
+    const g = room.g;
+    if (g.phase !== 'gara') return false;
+    if (!Number.isInteger(m.lane) || m.lane < 0 || m.lane > 1) return false;
+    if (g.fin.includes(p.pid)) return false;
+    if (tooFast(p, 40)) return false;
+
+    const exp = g.exp.get(p.pid) || 0;
+    if (m.lane !== exp) return false; // pedale sbagliato: sgommi sul posto
+    let pos = (g.pos.get(p.pid) || 0) + 1;
+    g.exp.set(p.pid, 1 - exp);
+    if (Math.floor(pos / this.TURBO) > Math.floor((pos - 1) / this.TURBO)) {
+      pos += this.BOOST;
+      g.boost.set(p.pid, Date.now() + 1200);
+    }
+    g.pos.set(p.pid, pos);
+    if (pos >= this.META && !g.fin.includes(p.pid)) g.fin.push(p.pid);
+    return true;
+  },
+
+  hostView(room, now) {
+    const g = room.g;
+    const piloti = [...room.players.values()]
+      .map((p) => ({
+        name: p.name,
+        pct: Math.round(clamp((g.pos.get(p.pid) || 0) / this.META, 0, 1) * 100),
+        turbo: (g.boost.get(p.pid) || 0) > now ? 1 : 0,
+        fin: g.fin.indexOf(p.pid)
+      }))
+      .sort((a, b) => b.pct - a.pct)
+      .slice(0, 10);
+    return {
+      phase: g.phase,
+      piloti,
+      left: Math.max(0, Math.ceil((g.until - now) / 1000)),
+      fin: g.fin.map((pid) => (room.players.get(pid) ? room.players.get(pid).name : '?'))
+    };
+  },
+
+  playerView(room, p, now) {
+    const g = room.g;
+    const pos = g.pos.get(p.pid) || 0;
+    const tutti = [...room.players.values()].map((x) => g.pos.get(x.pid) || 0).sort((a, b) => b - a);
+    return {
+      phase: g.phase,
+      pct: Math.round(clamp(pos / this.META, 0, 1) * 100),
+      exp: g.exp.get(p.pid) || 0,
+      turbo: (g.boost.get(p.pid) || 0) > now ? 1 : 0,
+      rank: tutti.indexOf(pos) + 1,
+      of: tutti.length,
+      fin: g.fin.indexOf(p.pid)
+    };
+  }
+};
+
+// --- Salta: ostacoli a tempo. Quello a terra si scavalca, quello in alto va schivato
+//     restando giu'. Chi sbaglia esce. Vince chi resta in pista piu' a lungo.
+GAMES.salto = {
+  label: 'Salta',
+  live: ['corsa'],
+  TOT: 15,
+  AIR: 700, // quanto resti per aria dopo il tocco
+
+  gap(beat) {
+    return Math.max(1200, 2600 - beat * 95);
+  },
+
+  start(room) {
+    room.level = null;
+    room.g = { phase: 'via', until: Date.now() + 3500, beat: 0, tipo: 0, next: 0, vivo: new Map(), aria: new Map(), fuori: new Map() };
+    resetScores(room);
+    for (const p of room.players.values()) room.g.vivo.set(p.pid, true);
+  },
+
+  tick(room, now) {
+    const g = room.g;
+    if (g.phase === 'fine') return false;
+
+    if (g.phase === 'via') {
+      if (now < g.until) return false;
+      g.phase = 'corsa';
+      g.tipo = Math.random() < 0.5 ? 0 : 1;
+      g.next = now + 2400;
+      return true;
+    }
+
+    if (now < g.next) return false;
+
+    // arriva l'ostacolo: chi e' nello stato sbagliato esce
+    for (const [pid, vivo] of g.vivo) {
+      if (!vivo) continue;
+      const p = room.players.get(pid);
+      const inAria = (g.aria.get(pid) || 0) > now;
+      const salvo = g.tipo === 0 ? inAria : !inAria;
+      if (salvo) {
+        if (p) p.score += 100;
+      } else {
+        g.vivo.set(pid, false);
+        g.fuori.set(pid, g.beat + 1);
+      }
+    }
+    g.beat++;
+
+    const vivi = [...g.vivo.values()].filter(Boolean).length;
+    if (g.beat >= this.TOT || vivi === 0) {
+      for (const [pid, vivo] of g.vivo) {
+        const p = room.players.get(pid);
+        if (vivo && p) p.score += 500; // bonus a chi arriva in fondo
+      }
+      g.phase = 'fine';
+      return true;
+    }
+    g.tipo = Math.random() < 0.5 ? 0 : 1;
+    g.next = now + this.gap(g.beat);
+    return true;
+  },
+
+  input(room, p, m) {
+    const g = room.g;
+    if (m.tap !== 1 || g.phase !== 'corsa') return false;
+    if (g.vivo.get(p.pid) !== true) return false;
+    const now = Date.now();
+    if ((g.aria.get(p.pid) || 0) > now) return false; // gia' per aria
+    g.aria.set(p.pid, now + this.AIR);
+    return true;
+  },
+
+  hostView(room, now) {
+    const g = room.g;
+    const vivi = [...g.vivo].filter(([, v]) => v);
+    return {
+      phase: g.phase,
+      beat: g.beat + 1,
+      tot: this.TOT,
+      tipo: g.tipo,
+      into: Math.max(0, g.next - now),
+      gap: this.gap(g.beat),
+      vivi: vivi.length,
+      nomi: vivi.slice(0, 14).map(([pid]) => (room.players.get(pid) ? room.players.get(pid).name : '?'))
+    };
+  },
+
+  playerView(room, p, now) {
+    const g = room.g;
+    const stato = g.vivo.get(p.pid);
+    return {
+      phase: g.phase,
+      beat: g.beat + 1,
+      tot: this.TOT,
+      tipo: g.tipo,
+      into: Math.max(0, g.next - now),
+      gap: this.gap(g.beat),
+      vivi: [...g.vivo.values()].filter(Boolean).length,
+      stato: stato === true ? 'vivo' : stato === false ? 'fuori' : 'spettatore',
+      fuoriAl: g.fuori.get(p.pid) || null,
+      aria: (g.aria.get(p.pid) || 0) > now ? 1 : 0
     };
   }
 };
@@ -388,6 +649,9 @@ wss.on('connection', (ws, req) => {
     const room = ws.room ? rooms.get(ws.room) : null;
     if (room) room.seen = Date.now();
 
+    // server riavviato: la vecchia stanza non c'e' piu', apri direttamente una nuova
+    if (m.t === 'rehost' && !rooms.has(m.code)) m.t = 'host';
+
     // --- host apre la stanza
     if (m.t === 'host') {
       const code = newCode();
@@ -458,6 +722,9 @@ wss.on('connection', (ws, req) => {
         room.g = {};
         room.dirty = true;
       }
+      if (m.t === 'next' && room.game && GAMES[room.game].hostInput) {
+        if (GAMES[room.game].hostInput(room, m)) room.dirty = true;
+      }
       if (m.t === 'kick') {
         room.players.delete(m.pid);
         room.dirty = true;
@@ -487,8 +754,11 @@ wss.on('connection', (ws, req) => {
 setInterval(() => {
   const now = Date.now();
   for (const room of rooms.values()) {
-    if (room.game && GAMES[room.game].tick(room, now)) room.dirty = true;
-    if (room.game && ['domanda', 'play', 'verde'].includes(room.g.phase)) room.dirty = true; // countdown/barra live
+    if (room.game) {
+      const G = GAMES[room.game];
+      if (G.tick(room, now)) room.dirty = true;
+      if (G.live.includes(room.g.phase)) room.dirty = true; // countdown e barre che scorrono
+    }
     if (room.dirty) {
       room.dirty = false;
       push(room);

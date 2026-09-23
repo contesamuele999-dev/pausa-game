@@ -27,10 +27,17 @@ function room(names) {
   // p2 non risponde
 
   GAMES.quiz.tick(r, r.g.until); // chiude la domanda e assegna i punti
-  assert.equal(r.g.phase, 'risposta');
+  assert.equal(r.g.phase, 'stacco');
   assert.ok(r.players.get('p0').score >= 500, 'chi risponde giusto prende almeno 500');
   assert.equal(r.players.get('p1').score, 0, 'risposta sbagliata = 0');
   assert.equal(r.players.get('p2').score, 0, 'nessuna risposta = 0');
+
+  // durante la partita nessuno deve vedere la risposta giusta
+  const vistaGioco = GAMES.quiz.playerView(r, r.players.get('p0'), Date.now());
+  assert.equal(vistaGioco.c, undefined, 'lo stacco non svela la soluzione');
+  assert.equal(vistaGioco.ok, undefined, 'lo stacco non dice se hai indovinato');
+  const vistaHost = GAMES.quiz.hostView(r, Date.now());
+  assert.equal(vistaHost.c, undefined, 'nemmeno lo schermo la svela');
 
   // velocita': risposta immediata vale piu' di una al fotofinish
   const fast = room(['F']), slow = room(['S']);
@@ -43,14 +50,29 @@ function room(names) {
   }
   assert.ok(fast.players.get('p0').score > slow.players.get('p0').score, 'piu veloce = piu punti');
 
-  // arriva fino in fondo senza incepparsi
+  // finite le domande si resta in attesa dell'host, non si svela niente da soli
   const end = room(['Z']);
   end.game = 'quiz';
   GAMES.quiz.start(end, {});
   let t = Date.now(), guard = 0;
-  while (end.g.phase !== 'fine' && guard++ < 200) { t += 31000; GAMES.quiz.tick(end, t); }
-  assert.equal(end.g.phase, 'fine', 'il quiz finisce');
-  assert.equal(GAMES.quiz.tick(end, t + 99999), false, 'da fine non si muove piu');
+  while (end.g.phase !== 'ripasso' && guard++ < 200) { t += 31000; GAMES.quiz.tick(end, t); }
+  assert.equal(end.g.phase, 'ripasso', 'dopo l ultima domanda si apre il ripasso');
+  assert.equal(GAMES.quiz.tick(end, t + 999999), false, 'il ripasso non avanza da solo');
+  assert.equal(GAMES.quiz.hostView(end, t).r, -1, 'le risposte non sono ancora mostrate');
+  assert.equal(GAMES.quiz.hostView(end, t).nextLabel, 'Mostra le risposte');
+
+  // l'host le scorre una per una
+  for (let k = 0; k < end.g.qs.length; k++) {
+    assert.ok(GAMES.quiz.hostInput(end, { t: 'next' }), 'l host avanza');
+    assert.equal(end.g.phase, 'ripasso');
+    const hv = GAMES.quiz.hostView(end, t);
+    assert.equal(hv.n, k + 1, 'mostra la domanda giusta');
+    assert.equal(typeof hv.c, 'number', 'ora la soluzione c e');
+    assert.equal(hv.counts.length, hv.o.length, 'con quante persone hanno scelto cosa');
+  }
+  GAMES.quiz.hostInput(end, { t: 'next' });
+  assert.equal(end.g.phase, 'fine', 'l ultimo Avanti porta alla classifica');
+  assert.equal(GAMES.quiz.tick(end, t + 999999), false, 'da fine non si muove piu');
 }
 
 // ---------------- riflessi
@@ -112,6 +134,98 @@ function room(names) {
   let t = r.g.until, guard = 0;
   while (r.g.phase !== 'fine' && guard++ < 500) { t += 31000; GAMES.insieme.tick(r, t); }
   assert.equal(r.g.phase, 'fine', 'i 3 round finiscono');
+}
+
+// ---------------- corsa
+{
+  const r = room(['Ada', 'Bruno']);
+  r.game = 'corsa';
+  GAMES.corsa.start(r);
+  GAMES.corsa.tick(r, r.g.until); // via -> gara
+  assert.equal(r.g.phase, 'gara');
+
+  const ada = r.players.get('p0');
+  const sbagliato = (GAMES.corsa.input(r, ada, { lane: 1 - (r.g.exp.get('p0') || 0) }), r.g.pos.get('p0') || 0);
+  assert.equal(sbagliato, 0, 'pedale sbagliato non fa avanzare');
+
+  // alternando si avanza, pestando sempre lo stesso no
+  ada.lastTap = 0;
+  for (let i = 0; i < 10; i++) { ada.lastTap = 0; GAMES.corsa.input(r, ada, { lane: r.g.exp.get('p0') || 0 }); }
+  assert.equal(r.g.pos.get('p0'), 10, 'dieci alternanze = dieci metri');
+
+  const fermo = r.players.get('p1');
+  for (let i = 0; i < 10; i++) { fermo.lastTap = 0; GAMES.corsa.input(r, fermo, { lane: 0 }); }
+  assert.ok((r.g.pos.get('p1') || 0) <= 1, 'martellare un solo pedale non porta lontano');
+
+  // la pedana turbo regala metri
+  ada.lastTap = 0;
+  const prima = r.g.pos.get('p0');
+  for (let i = prima; i < 25; i++) { ada.lastTap = 0; GAMES.corsa.input(r, ada, { lane: r.g.exp.get('p0') || 0 }); }
+  assert.ok(r.g.pos.get('p0') > 25, 'a 25 metri scatta il turbo');
+
+  // arrivare alla meta chiude la gara e paga il podio
+  while ((r.g.pos.get('p0') || 0) < GAMES.corsa.META) { ada.lastTap = 0; GAMES.corsa.input(r, ada, { lane: r.g.exp.get('p0') || 0 }); }
+  assert.deepEqual(r.g.fin, ['p0'], 'chi taglia il traguardo viene registrato');
+  assert.equal(GAMES.corsa.tick(r, Date.now()), false, 'si aspettano gli altri, o il tempo');
+  GAMES.corsa.tick(r, r.g.until); // scade il tempo di gara
+  assert.equal(r.g.phase, 'fine');
+  assert.equal(ada.score, 1000, 'primo classificato');
+  assert.ok(fermo.score >= 0 && fermo.score < 1000, 'gli altri prendono in base ai metri');
+}
+
+// ---------------- salta
+{
+  const r = room(['Ada', 'Bruno', 'Cleo']);
+  r.game = 'salto';
+  GAMES.salto.start(r);
+  GAMES.salto.tick(r, r.g.until); // via -> corsa
+  assert.equal(r.g.phase, 'corsa');
+  assert.equal([...r.g.vivo.values()].filter(Boolean).length, 3);
+
+  // ostacolo a terra: chi salta passa, chi resta giu' esce.
+  // l'ostacolo deve arrivare mentre si e' ancora per aria: si salta all'ultimo momento
+  r.g.tipo = 0;
+  r.g.next = Date.now() + 300;
+  assert.ok(GAMES.salto.input(r, r.players.get('p0'), { tap: 1 }), 'salto accettato');
+  assert.ok(!GAMES.salto.input(r, r.players.get('p0'), { tap: 1 }), 'in aria non si salta di nuovo');
+  GAMES.salto.tick(r, r.g.next);
+  assert.equal(r.g.vivo.get('p0'), true, 'chi salta supera l ostacolo a terra');
+  assert.equal(r.g.vivo.get('p1'), false, 'chi resta giu esce');
+  assert.equal(r.players.get('p0').score, 100, 'ostacolo superato = 100');
+  assert.equal(r.g.fuori.get('p1'), 1, 'segna a quale ostacolo e uscito');
+
+  // ostacolo in alto: saltare e' l'errore, quindi spammare il salto non paga
+  r.g.tipo = 1;
+  r.g.next = Date.now() + 300;
+  r.g.aria.set('p0', 0); // atterrato
+  GAMES.salto.input(r, r.players.get('p0'), { tap: 1 });
+  GAMES.salto.tick(r, r.g.next);
+  assert.equal(r.g.vivo.get('p0'), false, 'chi salta sull ostacolo alto esce');
+
+  // chi e' fuori non puo' piu' giocare
+  assert.ok(!GAMES.salto.input(r, r.players.get('p0'), { tap: 1 }), 'gli eliminati non toccano piu');
+
+  // finisce quando non resta nessuno
+  let t = r.g.next, guard = 0;
+  while (r.g.phase !== 'fine' && guard++ < 100) { t += 3000; GAMES.salto.tick(r, t); }
+  assert.equal(r.g.phase, 'fine', 'la corsa finisce');
+
+  // un giro intero senza errori arriva in fondo e paga il bonus
+  const r2 = room(['Solo']);
+  r2.game = 'salto';
+  GAMES.salto.start(r2);
+  GAMES.salto.tick(r2, r2.g.until);
+  let t2 = Date.now(), g2 = 0;
+  while (r2.g.phase !== 'fine' && g2++ < 100) {
+    const p = r2.players.get('p0');
+    r2.g.next = Date.now() + 200;          // l'ostacolo sta per arrivare
+    r2.g.aria.set('p0', 0);                // a terra
+    if (r2.g.tipo === 0) GAMES.salto.input(r2, p, { tap: 1 }); // salta solo se serve
+    t2 = r2.g.next;
+    GAMES.salto.tick(r2, t2);
+  }
+  assert.equal(r2.g.vivo.get('p0'), true, 'giocando bene si sopravvive');
+  assert.equal(r2.players.get('p0').score, GAMES.salto.TOT * 100 + 500, 'punti ostacoli + bonus finale');
 }
 
 // ---------------- classifica

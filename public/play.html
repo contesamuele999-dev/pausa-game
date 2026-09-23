@@ -35,11 +35,20 @@
   .opt.o0{background:var(--a)} .opt.o1{background:var(--b)} .opt.o2{background:var(--c);color:#1a1400} .opt.o3{background:var(--d);color:#052e16}
   .opt.dim{opacity:.25} .opt.win{outline:4px solid #fff;outline-offset:-4px}
 
-  .pad{flex:1;min-height:52vh;border-radius:24px;display:flex;align-items:center;justify-content:center;
+  .pad{flex:1;min-height:46vh;border-radius:24px;display:flex;align-items:center;justify-content:center;
        font-size:34px;font-weight:800;text-align:center;padding:20px;border:none;color:#fff}
   .pad.wait{background:#7f1d1d} .pad.go{background:#15803d} .pad.res{background:#1e2745}
   .pad.tap{background:linear-gradient(160deg,#3b82f6,#22c55e);color:#04210f}
+  .pad.jump{background:linear-gradient(160deg,#16a34a,#065f46)}
+  .pad.duck{background:linear-gradient(160deg,#b45309,#7c2d12)}
+  .pad.air{outline:6px solid #fde047;outline-offset:-6px}
   .pad:active{filter:brightness(1.15)}
+
+  /* corsa: due pedali da alternare */
+  .pedals{flex:1;min-height:42vh;display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .ped{height:100%;font-size:52px;background:#1e2745;border:2px solid var(--line);opacity:.45}
+  .ped.on{opacity:1;background:linear-gradient(160deg,#3b82f6,#1d4ed8);border-color:#60a5fa}
+  .ped:active{filter:brightness(1.2)}
 
   .bar{height:14px;border-radius:999px;background:#0e1530;border:1px solid var(--line);overflow:hidden}
   .bar>div{height:100%;background:linear-gradient(90deg,#3b82f6,#22c55e)}
@@ -112,39 +121,67 @@ function login() {
   (code ? $('#name') : $('#code')).focus();
 }
 
+// Le fasi "live" arrivano 7 volte al secondo: se ricostruissimo il DOM il bottone
+// sparirebbe da sotto il dito e i tocchi andrebbero persi. Quelle schermate hanno
+// un guscio fisso (#live) e aggiorniamo solo i numeri.
+const G = {
+  quiz:     { view: quizV },
+  riflessi: { view: riflessiV },
+  insieme:  { view: insiemeV, can: (v) => v.phase === 'play',  patch: insiemeP },
+  corsa:    { view: corsaV,   can: (v) => v.phase === 'gara',  patch: corsaP },
+  salto:    { view: saltoV,   can: (v) => v.phase === 'corsa' && v.stato === 'vivo', patch: saltoP }
+};
+
 function render(s) {
   $('#bar').classList.remove('hide');
   $('#hname').textContent = s.name;
   $('#hscore').textContent = s.score;
   $('#hrank').textContent = s.rank ? `${s.rank}º di ${s.of} · ` : '';
-  // "Insieme" aggiorna 7 volte al secondo: non ricostruire il bottone sotto il dito
-  if (s.game === 'insieme' && s.view.phase === 'play' && $('#fill')) {
-    $('#fill').style.width = s.view.pct + '%';
-    $('#taps').textContent = s.view.taps + ' tocchi';
-    $('#meta').textContent = `Round ${s.view.n}/${s.view.tot} · ${s.view.left}s · ${s.view.pct}%`;
-    return;
-  }
-  const html = s.game ? ({ quiz: quizV, riflessi: riflessiV, insieme: insiemeV })[s.game](s.view, s) : lobbyV(s);
-  if (html !== lastHtml) { $('#main').innerHTML = html; lastHtml = html; }
+
+  if (!s.game) return set(lobbyV(s));
+  const g = G[s.game];
+  if (g.can && g.can(s.view) && $('#live')) { g.patch(s.view); lastHtml = null; return; }
+  set(g.view(s.view, s));
 }
+
+function set(html) { if (html !== lastHtml) { $('#main').innerHTML = html; lastHtml = html; } }
 
 function lobbyV(s) {
   return `<div class="big">✋</div><div class="mid">Sei dentro, ${esc(s.name)}.<br>Aspetta il via dallo schermo.</div>
     ${s.top.length ? `<ol style="margin-top:20px">${s.top.map((p) => `<li><span>${p.rank}</span>${esc(p.name)}<b>${p.score}</b></li>`).join('')}</ol>` : ''}`;
 }
 
+function fineV(s) {
+  return `<div class="big">${s.rank === 1 ? '🥇' : s.rank === 2 ? '🥈' : s.rank === 3 ? '🥉' : '👏'}</div>
+    <div class="mid">${s.rank}º su ${s.of} · ${s.score} punti</div>
+    <ol style="margin-top:16px">${s.top.map((p) => `<li><span>${p.rank}</span>${esc(p.name)}<b>${p.score}</b></li>`).join('')}</ol>`;
+}
+
+// ---------- quiz: nessun riscontro durante la partita, solo nel ripasso finale
 function quizV(v, s) {
   if (v.phase === 'via') return `<div class="big">Pronto?</div><div class="mid">${v.tot} domande</div>`;
   if (v.phase === 'fine') return fineV(s);
-  const rev = v.phase === 'risposta';
-  return `<div class="mid">Domanda ${v.n}/${v.tot}${rev ? '' : ' · ' + v.left + 's'}</div>
+  if (v.phase === 'stacco')
+    return `<div class="big">✍️</div><div class="mid">Segnata.<br>Le risposte giuste alla fine, tutte insieme.</div>`;
+
+  if (v.phase === 'ripasso') {
+    if (v.r < 0) return `<div class="big">🎯</div><div class="mid">Finito.<br>Guarda lo schermo: arrivano le risposte.</div>`;
+    return `<div class="mid">Risposta ${v.n}/${v.tot}</div>
+      <p class="q">${esc(v.q)}</p>
+      <div class="opts">${v.o.map((o, i) => `
+        <button class="opt o${i} ${i === v.c ? 'win' : 'dim'}" disabled><i>${LET[i]}</i>${esc(o)}</button>`).join('')}</div>
+      <div class="mid">${v.pick == null ? '⏳ Non avevi risposto' : v.ok ? '✅ Giusta!' : '❌ Avevi scelto ' + LET[v.pick]}</div>`;
+  }
+
+  return `<div class="mid">Domanda ${v.n}/${v.tot} · ${v.left}s</div>
     <p class="q">${esc(v.q)}</p>
     <div class="opts">${v.o.map((o, i) => `
-      <button class="opt o${i} ${rev ? (i === v.c ? 'win' : 'dim') : (v.pick != null && v.pick !== i ? 'dim' : '')}"
-        data-pick="${i}" ${rev || v.pick != null ? 'disabled' : ''}><i>${LET[i]}</i>${esc(o)}</button>`).join('')}</div>
-    ${rev ? `<div class="mid">${v.ok ? '✅ Giusto!' : (v.pick == null ? '⏳ Niente risposta' : '❌ Sbagliato')}</div>` : ''}`;
+      <button class="opt o${i} ${v.pick != null && v.pick !== i ? 'dim' : ''}"
+        data-pick="${i}" ${v.pick != null ? 'disabled' : ''}><i>${LET[i]}</i>${esc(o)}</button>`).join('')}</div>
+    ${v.pick != null ? '<div class="mid">Risposta inviata ✔</div>' : ''}`;
 }
 
+// ---------- riflessi
 function riflessiV(v, s) {
   if (v.phase === 'fine') return fineV(s);
   if (v.phase === 'esito')
@@ -154,26 +191,80 @@ function riflessiV(v, s) {
   return `<button class="pad go" data-tap="1">${v.ms != null ? v.ms + ' ms' : 'TOCCA!'}</button>`;
 }
 
+// ---------- insieme
 function insiemeV(v, s) {
   if (v.phase === 'fine') return fineV(s);
   if (v.phase === 'esito') return `<div class="pad res">${v.won ? 'FATTO! 🎉' : 'Quasi…'}</div>`;
-  return `<button class="pad tap" data-tap="1">BATTI!<br><span style="font-size:.5em" id="taps">${v.taps} tocchi</span></button>
+  return `<div id="live" style="display:flex;flex-direction:column;gap:14px;flex:1">
+    <button class="pad tap" data-tap="1">BATTI!<br><span style="font-size:.5em" id="taps">${v.taps} tocchi</span></button>
     <div class="bar"><div id="fill" style="width:${v.pct}%"></div></div>
-    <div class="mid" id="meta">Round ${v.n}/${v.tot} · ${v.left}s · ${v.pct}%</div>`;
+    <div class="mid" id="meta">Round ${v.n}/${v.tot} · ${v.left}s · ${v.pct}%</div></div>`;
+}
+function insiemeP(v) {
+  $('#fill').style.width = v.pct + '%';
+  $('#taps').textContent = v.taps + ' tocchi';
+  $('#meta').textContent = `Round ${v.n}/${v.tot} · ${v.left}s · ${v.pct}%`;
 }
 
-function fineV(s) {
-  const m = s.top.find((p) => p.name === s.name);
-  return `<div class="big">${s.rank === 1 ? '🥇' : s.rank === 2 ? '🥈' : s.rank === 3 ? '🥉' : '👏'}</div>
-    <div class="mid">${s.rank}º su ${s.of} · ${s.score} punti</div>
-    <ol style="margin-top:16px">${s.top.map((p) => `<li><span>${p.rank}</span>${esc(p.name)}<b>${p.score}</b></li>`).join('')}</ol>`;
+// ---------- corsa: si avanza solo alternando i pedali
+function corsaV(v, s) {
+  if (v.phase === 'via')
+    return `<div class="big">🏁</div><div class="mid">Alterna i due pedali:<br>sinistra, destra, sinistra…<br><br>Premere sempre lo stesso ti fa sgommare.</div>`;
+  if (v.phase === 'fine') return fineV(s);
+  myExp = v.exp; // risincronizza quando il guscio viene ricreato
+  return `<div id="live" style="display:flex;flex-direction:column;gap:14px;flex:1">
+    <div class="mid" id="meta">${v.rank}º di ${v.of} · ${v.pct}%</div>
+    <div class="bar"><div id="fill" style="width:${v.pct}%"></div></div>
+    <div class="pedals">
+      <button class="ped ${v.exp === 0 ? 'on' : ''}" id="ped0" data-lane="0">◀</button>
+      <button class="ped ${v.exp === 1 ? 'on' : ''}" id="ped1" data-lane="1">▶</button>
+    </div></div>`;
+}
+// Il pedale atteso lo prevede il telefono, non lo aspetta dal server: a 5 tocchi
+// al secondo l'evidenziazione arriverebbe sempre un tocco in ritardo. Stessa regola
+// del server (si alterna solo quando il pedale e' quello giusto), quindi non divergono.
+let myExp = 0;
+function pedali() {
+  $('#ped0').classList.toggle('on', myExp === 0);
+  $('#ped1').classList.toggle('on', myExp === 1);
+}
+function corsaP(v) {
+  $('#fill').style.width = v.pct + '%';
+  $('#meta').textContent = `${v.turbo ? '🚀 ' : ''}${v.rank}º di ${v.of} · ${v.pct}%`;
 }
 
-// un solo listener: i bottoni vengono ridisegnati a ogni frame
+// ---------- salta: 🌵 a terra si salta, 🦅 in alto si resta giù
+function saltoV(v, s) {
+  if (v.phase === 'via')
+    return `<div class="big">🦘</div><div class="mid">🌵 a terra: <b>salta</b>.<br>🦅 in alto: <b>resta giù</b>.<br><br>Chi sbaglia esce.</div>`;
+  if (v.phase === 'fine') return fineV(s);
+  if (v.stato === 'fuori')
+    return `<div class="big">💥</div><div class="mid">Fuori all'ostacolo ${v.fuoriAl} su ${v.tot}.<br>${v.vivi} ancora in pista.</div>`;
+  if (v.stato === 'spettatore')
+    return `<div class="big">👀</div><div class="mid">Sei entrato a giro iniziato.<br>Guarda e aspetta il prossimo.</div>`;
+  return `<div id="live" style="display:flex;flex-direction:column;gap:14px;flex:1">
+    <div class="mid" id="meta">Ostacolo ${v.beat}/${v.tot} · ${v.vivi} in pista</div>
+    <button class="pad ${v.tipo === 0 ? 'jump' : 'duck'}" id="jump" data-tap="1">
+      <span id="sign">${v.tipo === 0 ? '🌵 SALTA' : '🦅 RESTA GIÙ'}</span></button>
+    <div class="bar"><div id="fill" style="width:${Math.round((v.into / v.gap) * 100)}%"></div></div></div>`;
+}
+function saltoP(v) {
+  $('#fill').style.width = Math.round((v.into / v.gap) * 100) + '%';
+  $('#meta').textContent = `Ostacolo ${v.beat}/${v.tot} · ${v.vivi} in pista`;
+  $('#jump').className = 'pad ' + (v.tipo === 0 ? 'jump' : 'duck') + (v.aria ? ' air' : '');
+  $('#sign').textContent = v.aria ? '⬆️ IN ARIA' : v.tipo === 0 ? '🌵 SALTA' : '🦅 RESTA GIÙ';
+}
+
+// un solo listener: i bottoni vengono ridisegnati a ogni cambio di fase
 $('#main').addEventListener('click', (e) => {
-  const b = e.target.closest('[data-pick],[data-tap]');
+  const b = e.target.closest('[data-pick],[data-tap],[data-lane]');
   if (!b || ws.readyState !== 1) return;
   if (navigator.vibrate) navigator.vibrate(12);
+  if (b.dataset.lane) {
+    const lane = +b.dataset.lane;
+    if (lane === myExp) { myExp = 1 - myExp; pedali(); } // previsione locale, niente attesa
+    return ws.send(JSON.stringify({ lane }));
+  }
   ws.send(JSON.stringify(b.dataset.tap ? { tap: 1 } : { pick: +b.dataset.pick }));
 });
 
