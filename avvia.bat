@@ -10,7 +10,7 @@ if not exist node_modules (
 
 rem IP del portatile sulla rete locale: serve perche' il QR deve puntare qui, non a localhost
 set IP=
-for /f "usebackq delims=" %%i in (`powershell -NoProfile -Command "(Get-NetIPConfiguration ^| Where-Object { $_.IPv4DefaultGateway -ne $null -and $_.NetAdapter.Status -eq 'Up' } ^| Select-Object -First 1).IPv4Address.IPAddress"`) do set IP=%%i
+for /f "usebackq delims=" %%i in (`powershell -NoProfile -Command "(Get-NetIPConfiguration).Where({ $_.IPv4DefaultGateway -ne $null -and $_.NetAdapter.Status -eq 'Up' })[0].IPv4Address.IPAddress"`) do set IP=%%i
 if "%IP%"=="" set IP=localhost
 
 set PUBLIC_URL=http://%IP%:3000
