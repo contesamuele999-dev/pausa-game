@@ -242,6 +242,77 @@ function room(names) {
   assert.ok(durata > 40000, 'il giro dura piu di 40 secondi, era ' + Math.round(durata / 1000) + 's');
 }
 
+// ---------------- raccogli (Token Rush)
+{
+  const r = room(['Ada', 'Bruno']);
+  r.game = 'rush';
+  GAMES.rush.start(r);
+  GAMES.rush.tick(r, r.g.until); // via -> gioco
+  assert.equal(r.g.phase, 'gioco');
+  assert.equal(r.g.vite.get('p0'), GAMES.rush.VITE);
+
+  const ada = r.players.get('p0'), bruno = r.players.get('p1');
+
+  // oggetto buono: chi ha il cestino sotto lo prende, chi no perde la combo
+  r.g.obj = { e: 'x', p: 10, w: 1 };
+  r.g.corsia = 2;
+  assert.equal(GAMES.rush.input(r, ada, { lane: 2 }), false, 'spostare il cestino non ritrasmette');
+  assert.equal(r.g.cesto.get('p0'), 2, 'ma il cestino si e spostato');
+  GAMES.rush.input(r, bruno, { lane: 0 });
+  assert.ok(!GAMES.rush.input(r, ada, { lane: 9 }), 'corsia fuori range rifiutata');
+  r.g.next = Date.now();
+  GAMES.rush.tick(r, r.g.next);
+  assert.equal(ada.score, 10, 'preso: punti per uno di combo');
+  assert.equal(r.g.combo.get('p0'), 2, 'la combo sale');
+  assert.equal(bruno.score, 0, 'chi era altrove non prende niente');
+  assert.equal(r.g.combo.get('p1'), 1, 'e resta a combo uno');
+
+  // la combo moltiplica
+  r.g.obj = { e: 'x', p: 10, w: 1 };
+  r.g.corsia = r.g.cesto.get('p0');
+  r.g.next = Date.now();
+  GAMES.rush.tick(r, r.g.next);
+  assert.equal(ada.score, 30, 'secondo oggetto di fila: 10 x combo 2');
+  assert.ok(r.g.combo.get('p0') <= GAMES.rush.COMBO_MAX, 'la combo ha un tetto');
+
+  // il bug si schiva: prenderlo costa una vita
+  r.g.obj = { e: 'b', p: 0, w: 1, bug: true };
+  r.g.corsia = r.g.cesto.get('p0');
+  r.g.next = Date.now();
+  const primaDelBug = ada.score;
+  GAMES.rush.tick(r, r.g.next);
+  assert.equal(r.g.vite.get('p0'), GAMES.rush.VITE - 1, 'il bug costa una vita');
+  assert.equal(r.g.combo.get('p0'), 1, 'e azzera la combo');
+  assert.equal(ada.score, primaDelBug, 'senza togliere punti gia fatti');
+  assert.equal(r.g.vite.get('p1'), GAMES.rush.VITE, 'chi lo schiva non perde niente');
+
+  // tre bug e si esce
+  for (let k = 0; k < 2; k++) {
+    r.g.obj = { e: 'b', p: 0, w: 1, bug: true };
+    r.g.corsia = r.g.cesto.get('p0');
+    r.g.next = Date.now();
+    GAMES.rush.tick(r, r.g.next);
+  }
+  assert.equal(r.g.vite.get('p0'), 0, 'vite finite');
+  assert.ok(r.g.fuori.get('p0') > 0, 'segnato a quale oggetto e uscito');
+  assert.ok(!GAMES.rush.input(r, ada, { lane: 1 }), 'chi e fuori non muove piu il cestino');
+
+  // arriva in fondo e prende il bonus sulle vite rimaste
+  const r2 = room(['Solo']);
+  r2.game = 'rush';
+  GAMES.rush.start(r2);
+  GAMES.rush.tick(r2, r2.g.until);
+  let guard = 0;
+  while (r2.g.phase !== 'fine' && guard++ < 200) {
+    // gioca bene: si mette sotto gli oggetti buoni e schiva i bug
+    GAMES.rush.input(r2, r2.players.get('p0'), { lane: r2.g.obj.bug ? (r2.g.corsia + 1) % 3 : r2.g.corsia });
+    r2.g.next = Date.now();
+    GAMES.rush.tick(r2, r2.g.next);
+  }
+  assert.equal(r2.g.vite.get('p0'), GAMES.rush.VITE, 'giocando bene non si perdono vite');
+  assert.ok(r2.players.get('p0').score > GAMES.rush.TOT * 10, 'e il punteggio cresce con la combo');
+}
+
 // ---------------- classifica
 {
   const r = room(['Ada', 'Bruno']);

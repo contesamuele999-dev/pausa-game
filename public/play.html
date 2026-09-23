@@ -67,6 +67,19 @@
   .scene i#ob.alto{bottom:98px}
   .cuori{letter-spacing:2px}
 
+  /* raccogli: tre corsie, l'oggetto cade, il cestino si sposta */
+  .pista{position:relative;flex:1;min-height:46vh;border-radius:24px;overflow:hidden;
+         background:linear-gradient(160deg,#111a33,#0b1020);border:1px solid var(--line)}
+  .pista .corsie{position:absolute;inset:0;display:grid;grid-template-columns:repeat(3,1fr)}
+  .pista .corsie button{height:100%;background:none;border:none;border-right:1px dashed #223055;border-radius:0}
+  .pista .corsie button:last-child{border-right:none}
+  .pista .corsie button:active{background:rgba(96,165,250,.14)}
+  .pista .cade{position:absolute;top:0;font-style:normal;font-size:44px;line-height:1;
+               transform:translateX(-50%);pointer-events:none;will-change:top}
+  .pista .cesto{position:absolute;bottom:14px;font-style:normal;font-size:48px;line-height:1;
+                transform:translateX(-50%);pointer-events:none;transition:left .1s ease-out}
+  .pista .suolo{position:absolute;left:0;right:0;bottom:70px;height:2px;background:rgba(255,255,255,.18)}
+
   /* corsa: due pedali da alternare */
   .pedals{flex:1;min-height:42vh;display:grid;grid-template-columns:1fr 1fr;gap:12px}
   .ped{height:100%;font-size:52px;background:#1e2745;border:2px solid var(--line);opacity:.45}
@@ -100,6 +113,7 @@ const LET = ['A','B','C','D'];
 const esc = (s) => String(s).replace(/[<>&]/g, (c) => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
 const qs = new URLSearchParams(location.search);
 
+let lastGame = null;
 let ws, pid = null, code = (qs.get('r') || '').toUpperCase(), joined = false, lastHtml = '';
 
 function store(c) { try { return localStorage.getItem('pid:' + c); } catch { return null; } }
@@ -152,7 +166,8 @@ const G = {
   riflessi: { view: riflessiV },
   insieme:  { view: insiemeV, can: (v) => v.phase === 'play',  patch: insiemeP },
   corsa:    { view: corsaV,   can: (v) => v.phase === 'gara',  patch: corsaP },
-  salto:    { view: saltoV,   can: (v) => v.phase === 'corsa' && v.stato === 'vivo', patch: saltoP }
+  salto:    { view: saltoV,   can: (v) => v.phase === 'corsa' && v.stato === 'vivo', patch: saltoP },
+  rush:     { view: rushV,    can: (v) => v.phase === 'gioco' && v.stato === 'vivo', patch: rushP }
 };
 
 function render(s) {
@@ -161,11 +176,13 @@ function render(s) {
   $('#hscore').textContent = s.score;
   $('#hrank').textContent = s.rank ? `${s.rank}º di ${s.of} · ` : '';
 
+  lastGame = s.game;
   if (!s.game) return set(lobbyV(s));
   const g = G[s.game];
   if (g.can && g.can(s.view) && $('#live')) { g.patch(s.view, s); lastHtml = null; return; }
   set(g.view(s.view, s));
   if (s.game === 'salto' && s.view.phase === 'corsa' && s.view.stato === 'vivo') volaOstacolo(s.view);
+  if (s.game === 'rush' && s.view.phase === 'gioco' && s.view.stato === 'vivo') { rushP(s.view, s); }
 }
 
 function set(html) { if (html !== lastHtml) { $('#main').innerHTML = html; lastHtml = html; } }
@@ -338,6 +355,69 @@ function salta() {
   return true;
 }
 
+// ---------- raccogli: il Token Rush, ma con le cadute decise dal server
+const CADUTA_FINE = 62; // percentuale di altezza a cui l'oggetto incontra il cestino
+let rushLane = 1;
+
+function corsiaX(i) { return (i + 0.5) * (100 / 3); }
+
+function rushV(v, s) {
+  if (v.phase === 'via') {
+    rushLane = v.cesto;
+    return `<div class="hero">${s.ch}</div>
+      <div class="mid">Sposta il cestino sulle tre corsie.<br>
+      Prendi 🟢 📝 💎, <b>schiva i 🐛</b>.<br><br>Ogni presa di fila moltiplica i punti.
+      <br>Hai ${v.viteMax} vite: ${'❤️'.repeat(v.viteMax)}</div>`;
+  }
+  if (v.phase === 'fine') return fineV(s);
+  if (v.stato === 'fuori')
+    return `<div class="big">🐛</div><div class="hero">${s.ch}</div>
+      <div class="mid">Troppi bug: fuori al numero ${v.fuoriAl} su ${v.tot}.<br>${v.vivi} ancora in gioco.</div>`;
+  if (v.stato === 'spettatore')
+    return `<div class="hero">${s.ch}</div><div class="mid">Sei entrato a giro iniziato.<br>Guarda e aspetta il prossimo.</div>`;
+  rushLane = v.cesto;
+  return `<div id="live" style="display:flex;flex-direction:column;gap:12px;flex:1">
+    <div class="mid" id="meta"></div>
+    <div class="pista">
+      <div class="suolo"></div>
+      <i class="cade" id="cade" style="left:${corsiaX(v.corsia)}%">${v.e}</i>
+      <i class="cesto" id="cesto" style="left:${corsiaX(v.cesto)}%">${s.ch}</i>
+      <div class="corsie">
+        <button data-lane="0"></button><button data-lane="1"></button><button data-lane="2"></button>
+      </div>
+    </div></div>`;
+}
+
+// Come per Salta: una sola animazione per oggetto, lunga quanto manca davvero.
+function cadeOggetto(v) {
+  const el = $('#cade');
+  if (!el) return;
+  const da = CADUTA_FINE * (1 - v.into / v.gap);
+  el.style.transition = 'none';
+  el.style.top = da + '%';
+  el.style.left = corsiaX(v.corsia) + '%';
+  void el.offsetWidth;
+  el.style.transition = `top ${v.into}ms linear`;
+  el.style.top = CADUTA_FINE + '%';
+}
+
+function rushP(v, s) {
+  const el = $('#cade');
+  el.textContent = v.e;
+  $('#cesto').textContent = s.ch;
+  $('#meta').innerHTML = `${v.beat}/${v.tot} · <span class="cuori">${cuori(v)}</span>`
+    + (v.combo > 1 ? ` · <b>x${v.combo}</b>` : '')
+    + (v.bug ? ' · <b>🐛 schiva!</b>' : ` · ${v.punti} punti`);
+  rushLane = v.cesto;
+  muoviCesto();
+  cadeOggetto(v);
+}
+
+function muoviCesto() {
+  const c = $('#cesto');
+  if (c) c.style.left = corsiaX(rushLane) + '%';
+}
+
 // un solo listener: i bottoni vengono ridisegnati a ogni cambio di fase
 $('#main').addEventListener('click', (e) => {
   const b = e.target.closest('[data-pick],[data-tap],[data-lane],[data-skin]');
@@ -345,6 +425,11 @@ $('#main').addEventListener('click', (e) => {
   if (navigator.vibrate) navigator.vibrate(12);
   if (b.dataset.skin) return ws.send(JSON.stringify({ t: 'skin' }));
   if (b.id === 'jump') { salta(); return ws.send(JSON.stringify({ tap: 1 })); }
+  if (b.dataset.lane && G[lastGame] === G.rush) {
+    rushLane = +b.dataset.lane;
+    muoviCesto(); // si muove al tocco, senza aspettare il giro di rete
+    return ws.send(JSON.stringify({ lane: rushLane }));
+  }
   if (b.dataset.lane) {
     const lane = +b.dataset.lane;
     if (lane === myExp) { myExp = 1 - myExp; pedali(); } // previsione locale, niente attesa

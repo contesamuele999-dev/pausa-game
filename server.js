@@ -595,6 +595,178 @@ GAMES.salto = {
   }
 };
 
+// --- Raccogli: il Token Rush della sala. Cadono oggetti su tre corsie, sposti il
+//     cestino e prendi quelli buoni evitando i bug. Combo che cresce, tre vite.
+//     A differenza dell'originale a schermo singolo le cadute le decide il server:
+//     con i premi in palio il punteggio non puo' arrivare dal telefono.
+GAMES.rush = {
+  label: 'Raccogli',
+  live: [],
+  CORSIE: 3,
+  TOT: 20,
+  VITE: 3,
+  COMBO_MAX: 5,
+  OGGETTI: [
+    { e: '🟢', p: 10, w: 50 },
+    { e: '📝', p: 25, w: 14 },
+    { e: '💎', p: 50, w: 8 },
+    { e: '🐛', p: 0, w: 22, bug: true }
+  ],
+
+  gap(beat) {
+    return Math.max(950, 2300 - beat * 75);
+  },
+
+  _pesca() {
+    const tot = this.OGGETTI.reduce((n, o) => n + o.w, 0);
+    let r = Math.random() * tot;
+    for (const o of this.OGGETTI) {
+      r -= o.w;
+      if (r <= 0) return o;
+    }
+    return this.OGGETTI[0];
+  },
+
+  _vivi(g) {
+    let n = 0;
+    for (const v of g.vite.values()) if (v > 0) n++;
+    return n;
+  },
+
+  start(room) {
+    room.level = null;
+    room.g = {
+      phase: 'via',
+      until: Date.now() + 3500,
+      beat: 0,
+      corsia: 1,
+      obj: this.OGGETTI[0],
+      next: 0,
+      cesto: new Map(), // corsia scelta da ogni giocatore
+      vite: new Map(),
+      combo: new Map(),
+      preso: new Map(), // esito dell'ultimo oggetto, per il riscontro sul telefono
+      fuori: new Map()
+    };
+    resetScores(room);
+    for (const p of room.players.values()) {
+      room.g.vite.set(p.pid, this.VITE);
+      room.g.combo.set(p.pid, 1);
+      room.g.cesto.set(p.pid, 1);
+    }
+  },
+
+  tick(room, now) {
+    const g = room.g;
+    if (g.phase === 'fine') return false;
+
+    if (g.phase === 'via') {
+      if (now < g.until) return false;
+      g.phase = 'gioco';
+      g.obj = this._pesca();
+      g.corsia = (Math.random() * this.CORSIE) | 0;
+      g.next = now + 2300;
+      return true;
+    }
+
+    if (now < g.next) return false;
+
+    for (const [pid, vite] of g.vite) {
+      if (vite <= 0) continue;
+      const p = room.players.get(pid);
+      const sotto = (g.cesto.get(pid) || 0) === g.corsia;
+      if (g.obj.bug) {
+        if (sotto) {
+          g.vite.set(pid, vite - 1);
+          g.combo.set(pid, 1);
+          g.preso.set(pid, 'bug');
+          if (vite - 1 <= 0) g.fuori.set(pid, g.beat + 1);
+        } else {
+          g.preso.set(pid, 'schivato');
+        }
+      } else if (sotto) {
+        const combo = g.combo.get(pid) || 1;
+        if (p) p.score += g.obj.p * combo;
+        g.combo.set(pid, Math.min(this.COMBO_MAX, combo + 1));
+        g.preso.set(pid, 'preso');
+      } else {
+        g.combo.set(pid, 1);
+        g.preso.set(pid, 'perso');
+      }
+    }
+    g.beat++;
+
+    if (g.beat >= this.TOT || this._vivi(g) === 0) {
+      for (const [pid, vite] of g.vite) {
+        const p = room.players.get(pid);
+        if (vite > 0 && p) p.score += 150 * vite;
+      }
+      g.phase = 'fine';
+      return true;
+    }
+    g.obj = this._pesca();
+    g.corsia = (Math.random() * this.CORSIE) | 0;
+    g.next = now + this.gap(g.beat);
+    return true;
+  },
+
+  input(room, p, m) {
+    const g = room.g;
+    if (g.phase !== 'gioco') return false;
+    if (!Number.isInteger(m.lane) || m.lane < 0 || m.lane >= this.CORSIE) return false;
+    if ((g.vite.get(p.pid) || 0) <= 0) return false;
+    g.cesto.set(p.pid, m.lane);
+    return false; // il cestino si sposta subito sul telefono: non serve ritrasmettere
+  },
+
+  hostView(room, now) {
+    const g = room.g;
+    const vivi = [...g.vite].filter(([, v]) => v > 0);
+    return {
+      phase: g.phase,
+      beat: g.beat + 1,
+      tot: this.TOT,
+      e: g.obj.e,
+      bug: g.obj.bug ? 1 : 0,
+      punti: g.obj.p,
+      corsia: g.corsia,
+      corsie: this.CORSIE,
+      into: Math.max(0, g.next - now),
+      gap: this.gap(g.beat),
+      vivi: vivi.length,
+      nomi: vivi.slice(0, 14).map(([pid, v]) => {
+        const p = room.players.get(pid);
+        return { ch: p ? p.ch : 'X', name: p ? p.name : '?', vite: v, combo: g.combo.get(pid) || 1 };
+      })
+    };
+  },
+
+  playerView(room, p, now) {
+    const g = room.g;
+    const vite = g.vite.get(p.pid);
+    return {
+      phase: g.phase,
+      beat: g.beat + 1,
+      tot: this.TOT,
+      e: g.obj.e,
+      bug: g.obj.bug ? 1 : 0,
+      punti: g.obj.p,
+      corsia: g.corsia,
+      corsie: this.CORSIE,
+      into: Math.max(0, g.next - now),
+      gap: this.gap(g.beat),
+      cesto: g.cesto.get(p.pid) || 0,
+      combo: g.combo.get(p.pid) || 1,
+      vite: vite == null ? null : vite,
+      viteMax: this.VITE,
+      esito: g.preso.get(p.pid) || null,
+      vivi: this._vivi(g),
+      stato: vite == null ? 'spettatore' : vite > 0 ? 'vivo' : 'fuori',
+      fuoriAl: g.fuori.get(p.pid) || null
+    };
+  }
+};
+
 // ---------------------------------------------------------------- stato
 
 function hostState(room, now) {

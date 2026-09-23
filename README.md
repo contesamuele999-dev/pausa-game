@@ -1,7 +1,7 @@
 # Pausa Game
 
 Giochi multiplayer da telefono per le pause delle conferenze. Il pubblico inquadra un QR,
-entra e gioca insieme. Cinque meccaniche, una classifica per partita, premi ai primi.
+entra e gioca insieme. Sei meccaniche, una classifica per partita, premi ai primi.
 
 ## Come si usa in sala
 
@@ -12,7 +12,7 @@ entra e gioca insieme. Cinque meccaniche, una classifica per partita, premi ai p
 
 Il refresh della pagina host non perde la stanza. Chi blocca il telefono rientra e ritrova i suoi punti.
 
-## I cinque giochi
+## I sei giochi
 
 | Gioco | Per chi | Come funziona | Durata |
 |---|---|---|---|
@@ -21,6 +21,7 @@ Il refresh della pagina host non perde la stanza. Chi blocca il telefono rientra
 | **Insieme** | tutta la sala, cooperativo | 3 round da 30s. Tutti battono sul telefono per riempire una barra che si svuota da sola. Se ce la fate, punti a tutti (di più a chi ha battuto di più). | ~2 min |
 | **Corsa** 🏎️ | dai 6 anni in su | Kart. Si avanza alternando i due pedali, sinistra-destra-sinistra. Martellare sempre lo stesso non porta da nessuna parte. Pedana turbo ogni 25 metri, podio ai primi tre al traguardo. | ~1 min |
 | **Salta** 🦘 | tutti | 24 ostacoli a tempo: 🌵 a terra si salta, 🦅 in alto si resta giù. Tre vite a testa, così si gioca fino in fondo invece di uscire al primo errore. Gli ostacoli si stringono da 2,7s a 1,15s. | ~45s |
+| **Raccogli** 🧺 | dagli 8 anni in su | Cadono oggetti su tre corsie: sposti il cestino per prendere 🟢 10, 📝 25 e 💎 50 punti, e schivi i 🐛. Ogni presa di fila moltiplica fino a x5, tre bug e sei fuori. | ~35s |
 
 ### I personaggi
 
@@ -33,6 +34,13 @@ Sul telefono non è decorativo: nella Corsa è il tuo kart che avanza sulla pist
 bandiera a scacchi (e diventa 🚀 sulla pedana turbo), in Salta è il personaggio che scavalca
 l'ostacolo in arrivo da destra — guardando il telefono capisci il tempo senza alzare gli occhi
 allo schermo. Ampliali o cambiali nella lista `PERSONAGGI` in cima a `server.js`.
+
+### Perche' "Raccogli" gira sul server
+
+E' il porting di Token Rush, che nell'originale e' un gioco a schermo singolo dove il
+browser calcola tutto. Qui ci sono premi in palio, quindi un punteggio che arriva dal
+telefono e' un punteggio che si puo' truccare aprendo la console. Le cadute, le corsie
+e i punti li decide il server: il telefono manda solo dove hai messo il cestino.
 
 ### Le risposte del quiz le decidi tu
 
@@ -130,7 +138,7 @@ Un redirect/proxy Netlify **non** va bene: non inoltra l'upgrade WebSocket.
 ## File
 
 ```
-server.js        server + le cinque meccaniche di gioco
+server.js        server + le sei meccaniche di gioco
 questions.json   le domande del quiz, per fascia d'età
 public/host.html schermo grande (proiettore)
 public/play.html telefono

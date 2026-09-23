@@ -70,6 +70,15 @@
   .timer{width:70%;height:3vh;border-radius:999px;background:#0e1530;border:1px solid var(--line);overflow:hidden}
   .timer>div{height:100%;width:100%;background:#f59e0b;will-change:width}
 
+  /* raccogli */
+  .pistaH{position:relative;flex:1;border-radius:20px;overflow:hidden;background:#0e1530;border:1px solid var(--line)}
+  .pistaH .corsieH{position:absolute;inset:0;display:grid;grid-template-columns:repeat(3,1fr)}
+  .pistaH .corsieH div{border-right:2px dashed #223055}
+  .pistaH .corsieH div:last-child{border-right:none}
+  .pistaH .cadeH{position:absolute;top:0;font-style:normal;font-size:clamp(40px,7vw,110px);
+                 transform:translateX(-50%);will-change:top;line-height:1}
+  .pistaH .suoloH{position:absolute;left:0;right:0;bottom:12%;height:4px;background:rgba(255,255,255,.25)}
+
   ol.board{list-style:none;margin:0;padding:0;overflow:auto}
   ol.board li{display:flex;align-items:center;gap:1rem;padding:.7vh .4rem;font-size:clamp(15px,1.5vw,26px);border-bottom:1px solid var(--line)}
   ol.board li span{color:var(--dim);min-width:2.2em}
@@ -119,6 +128,7 @@
           <button data-g="insieme">Insieme</button>
           <button data-g="corsa">Corsa 🏎️</button>
           <button data-g="salto">Salta 🦘</button>
+          <button data-g="rush">Raccogli 🧺</button>
           <button class="go hide" id="bnext" style="grid-column:span 2">Avanti</button>
           <button class="stop hide" id="bstop">Termina</button>
         </div>
@@ -168,6 +178,7 @@ function render(s) {
     .map((p) => `<li><span>${p.rank}</span>${p.ch} ${esc(p.name)}<b>${p.score}</b></li>`).join('');
   $('#stagebox').innerHTML = VIEWS[s.game](s.view, s);
   if (s.game === 'salto' && s.view.phase === 'corsa') animaTimer(s.view);
+  if (s.game === 'rush' && s.view.phase === 'gioco') animaCaduta(s.view);
 
   // le fasi che avanzano solo su decisione dell'host espongono un'etichetta
   const lab = s.view && s.view.nextLabel;
@@ -247,7 +258,33 @@ function animaTimer(v) {
   el.style.width = '0%';
 }
 
-const VIEWS = { quiz: quizView, riflessi: riflessiView, insieme: insiemeView, corsa: corsaView, salto: saltoView };
+function rushView(v, s) {
+  if (v.phase === 'via')
+    return `<div class="big">🧺</div><div class="sub">Cestino sulle tre corsie.<br>
+      Prendere 🟢 📝 💎, schivare i 🐛. Ogni presa di fila moltiplica.</div>`;
+  if (v.phase === 'fine') return podio(s);
+  return `<div class="sub">Oggetto ${v.beat}/${v.tot} · ${v.vivi} ancora in gioco
+      · ${v.bug ? 'BUG, schivatelo!' : v.punti + ' punti'}</div>
+    <div class="pistaH">
+      <div class="corsieH"><div></div><div></div><div></div></div>
+      <div class="suoloH"></div>
+      <i class="cadeH" id="cadeH" style="left:${(v.corsia + 0.5) * (100 / v.corsie)}%">${v.e}</i>
+    </div>
+    <div class="sub">${v.nomi.map((n) => n.ch + ' ' + esc(n.name) + (n.combo > 1 ? ' x' + n.combo : '')).join('&nbsp;&nbsp; ')}</div>`;
+}
+
+// stessa idea del timer di Salta: una transizione lunga quanto manca alla caduta
+function animaCaduta(v) {
+  const el = $('#cadeH');
+  if (!el) return;
+  el.style.transition = 'none';
+  el.style.top = 74 * (1 - v.into / v.gap) + '%';
+  void el.offsetWidth;
+  el.style.transition = `top ${v.into}ms linear`;
+  el.style.top = '74%';
+}
+
+const VIEWS = { quiz: quizView, riflessi: riflessiView, insieme: insiemeView, corsa: corsaView, salto: saltoView, rush: rushView };
 
 function riflessiView(v, s) {
   if (v.phase === 'fine') return podio(s);
