@@ -50,6 +50,14 @@ da lì le scorri una alla volta con **Avanti**, con la soluzione evidenziata e q
 avevano scelto ciascuna opzione. Ogni telefono mostra in parallelo cosa aveva risposto il suo
 proprietario. L'ultimo **Avanti** porta alla classifica.
 
+### N+ Arena Stickman
+
+Nella sala d'attesa dello schermo host c'e' un link a
+[N+ Arena Stickman](https://contesamuele999-dev.github.io/n-arena-stickman/), che resta un
+progetto a se': platformer da tastiera, multiplayer PeerJS per 2-4 giocatori, non entra in
+una stanza da cento telefoni. Sta li' per farlo giocare a due o tre volontari sul palco
+mentre la sala guarda, non come minigioco della pausa.
+
 ## Le domande
 
 Stanno in [`questions.json`](questions.json), tre liste: `bambini`, `ragazzi`, `adulti`.
