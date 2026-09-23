@@ -35,6 +35,23 @@ quelle attuali sono sui meccanismi di memoria e apprendimento, a tema con le pau
 - **`pusha.bat`** — salva su GitHub. Chiede il messaggio (invio = "aggiornamenti"), e se il
   repository non esiste ancora lo crea privato. Serve [GitHub CLI](https://cli.github.com) loggato.
 
+### Il telefono resta a caricare all'infinito
+
+È il firewall di Windows, non il codice. Sulle reti con profilo "Public" Windows scarta
+le connessioni in entrata: il telefono chiede, nessuno risponde, il browser gira a vuoto.
+Da PowerShell **come amministratore**, una volta sola su questo portatile:
+
+```powershell
+New-NetFirewallRule -DisplayName "Pausa Game 3000" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 3000 -Profile Any -RemoteAddress LocalSubnet
+```
+
+`-RemoteAddress LocalSubnet` apre la porta solo verso la rete locale, non verso internet.
+`avvia.bat` controlla che la regola esista e avvisa se manca.
+
+Se dopo la regola il telefono ancora non entra, la wifi ha l'isolamento client attivo
+(comune negli hotel e nei centri congressi): i dispositivi non possono parlarsi tra loro.
+Lì l'unica strada è l'hotspot del tuo telefono, o il deploy online.
+
 ## Locale (da terminale)
 
 ```bash

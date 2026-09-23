@@ -22,6 +22,15 @@ echo   I telefoni devono stare sulla stessa wifi del portatile.
 echo   Chiudi la finestra "Pausa Game - server" per fermare tutto.
 echo.
 
+rem senza la regola firewall Windows scarta le richieste dei telefoni: caricamento infinito
+netsh advfirewall firewall show rule name="Pausa Game 3000" >nul 2>&1 || (
+  echo   ATTENZIONE: manca la regola del firewall, i telefoni non riusciranno a entrare.
+  echo   Apri PowerShell come amministratore, una volta sola, e incolla questa riga:
+  echo.
+  echo     New-NetFirewallRule -DisplayName "Pausa Game 3000" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 3000 -Profile Any -RemoteAddress LocalSubnet
+  echo.
+)
+
 start "Pausa Game - server" cmd /k "npm start"
 timeout /t 4 >nul
 start "" "http://localhost:3000/host"
