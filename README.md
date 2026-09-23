@@ -42,6 +42,7 @@ quelle attuali sono sui meccanismi di memoria e apprendimento, a tema con le pau
 - **`avvia.bat`** — installa le dipendenze la prima volta, trova l'IP del portatile sulla rete,
   avvia il server e apre lo schermo del proiettore. I telefoni sulla stessa wifi inquadrano il QR.
   Per fermare tutto: chiudi la finestra "Pausa Game - server".
+- **`firewall.bat`** — apre la porta 3000 verso la rete locale. Serve una volta sola, chiede conferma a Windows.
 - **`pusha.bat`** — salva su GitHub. Chiede il messaggio (invio = "aggiornamenti"), e se il
   repository non esiste ancora lo crea privato. Serve [GitHub CLI](https://cli.github.com) loggato.
 
@@ -49,14 +50,20 @@ quelle attuali sono sui meccanismi di memoria e apprendimento, a tema con le pau
 
 È il firewall di Windows, non il codice. Sulle reti con profilo "Public" Windows scarta
 le connessioni in entrata: il telefono chiede, nessuno risponde, il browser gira a vuoto.
-Da PowerShell **come amministratore**, una volta sola su questo portatile:
 
-```powershell
-New-NetFirewallRule -DisplayName "Pausa Game 3000" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 3000 -Profile Any -RemoteAddress LocalSubnet
+**Doppio click su `firewall.bat`**, conferma con "Sì" alla finestra di Windows. Una volta sola
+per portatile. Apre la porta 3000 solo verso la rete locale (`remoteip=localsubnet`),
+non verso internet. `avvia.bat` controlla che la regola ci sia e si ferma se manca.
+
+Per verificare a mano:
+
+```bash
+netsh advfirewall firewall show rule name="Pausa Game 3000"
 ```
 
-`-RemoteAddress LocalSubnet` apre la porta solo verso la rete locale, non verso internet.
-`avvia.bat` controlla che la regola esista e avvisa se manca.
+Altre due cose da controllare prima di dare la colpa al firewall:
+telefono e portatile devono stare sulla **stessa** wifi (il telefono non deve essere su 4G),
+e l'indirizzo va digitato per intero, `http://192.168.1.26:3000`, porta compresa.
 
 Se dopo la regola il telefono ancora non entra, la wifi ha l'isolamento client attivo
 (comune negli hotel e nei centri congressi): i dispositivi non possono parlarsi tra loro.
@@ -116,4 +123,7 @@ questions.json   le domande del quiz, per fascia d'età
 public/host.html schermo grande (proiettore)
 public/play.html telefono
 test.js          check della logica di punteggio e dei round
+avvia.bat        lancio rapido in locale
+firewall.bat     apre la porta 3000 sulla rete locale (una volta sola)
+pusha.bat        commit e push su GitHub
 ```

@@ -25,10 +25,10 @@ echo.
 rem senza la regola firewall Windows scarta le richieste dei telefoni: caricamento infinito
 netsh advfirewall firewall show rule name="Pausa Game 3000" >nul 2>&1 || (
   echo   ATTENZIONE: manca la regola del firewall, i telefoni non riusciranno a entrare.
-  echo   Apri PowerShell come amministratore, una volta sola, e incolla questa riga:
+  echo   Chiudi questa finestra, fai doppio click su firewall.bat e conferma con "Si".
+  echo   Serve una volta sola su questo portatile.
   echo.
-  echo     New-NetFirewallRule -DisplayName "Pausa Game 3000" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 3000 -Profile Any -RemoteAddress LocalSubnet
-  echo.
+  pause
 )
 
 start "Pausa Game - server" cmd /k "npm start"
