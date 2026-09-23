@@ -1,0 +1,44 @@
+{
+  "bambini": [
+    { "q": "Quanti lati ha un triangolo?", "o": ["3", "4", "5", "6"], "c": 0 },
+    { "q": "Di che colore diventa il cielo al tramonto?", "o": ["Verde", "Arancione", "Viola a pois", "Nero"], "c": 1 },
+    { "q": "Quale di questi animali dorme a testa in giù?", "o": ["Il gatto", "Il pipistrello", "Il cavallo", "Il pesce"], "c": 1 },
+    { "q": "Quante zampe ha un ragno?", "o": ["6", "8", "10", "4"], "c": 1 },
+    { "q": "Cosa mangia di solito il panda?", "o": ["Bambù", "Pizza", "Pesce", "Miele"], "c": 0 },
+    { "q": "Qual è il pianeta dove viviamo?", "o": ["Marte", "Luna", "Terra", "Saturno"], "c": 2 },
+    { "q": "Quanti minuti ci sono in mezz'ora?", "o": ["15", "30", "45", "60"], "c": 1 },
+    { "q": "Cosa serve per far crescere una pianta?", "o": ["Acqua e luce", "Solo buio", "Sabbia e ghiaccio", "Niente"], "c": 0 },
+    { "q": "Il cervello lavora anche mentre dormi?", "o": ["No, si spegne", "Sì, tantissimo", "Solo il lunedì", "Solo se sogni"], "c": 1 },
+    { "q": "Quale animale è il più grande del mondo?", "o": ["Elefante", "Balenottera azzurra", "Giraffa", "Squalo"], "c": 1 },
+    { "q": "Quante dita hai in tutto tra le due mani?", "o": ["8", "10", "12", "20"], "c": 1 },
+    { "q": "Che verso fa la pecora?", "o": ["Bee", "Muu", "Miao", "Bau"], "c": 0 }
+  ],
+  "ragazzi": [
+    { "q": "Dopo quanti minuti di studio l'attenzione cala di solito?", "o": ["5 minuti", "20-25 minuti", "2 ore", "Non cala mai"], "c": 1 },
+    { "q": "Ripassare a distanza di giorni invece che tutto insieme...", "o": ["Fa perdere tempo", "Fa ricordare molto di più", "È uguale", "Funziona solo a scuola"], "c": 1 },
+    { "q": "Qual è la capitale dell'Australia?", "o": ["Sydney", "Melbourne", "Canberra", "Perth"], "c": 2 },
+    { "q": "Cosa vuol dire 'multitasking' per il cervello?", "o": ["Fare due cose insieme bene", "Saltare veloce da una cosa all'altra", "Dormire meglio", "Studiare in gruppo"], "c": 1 },
+    { "q": "Quanto è il 15% di 200?", "o": ["15", "20", "30", "45"], "c": 2 },
+    { "q": "Quale gas respiriamo in maggior quantità nell'aria?", "o": ["Ossigeno", "Azoto", "Anidride carbonica", "Elio"], "c": 1 },
+    { "q": "Spiegare qualcosa a un altro ti fa ricordare...", "o": ["Di meno", "Uguale", "Molto di più", "Solo le date"], "c": 2 },
+    { "q": "Chi ha scritto 'I Promessi Sposi'?", "o": ["Dante", "Manzoni", "Leopardi", "Verga"], "c": 1 },
+    { "q": "Un sonno breve (15-20 min) dopo lo studio serve a...", "o": ["Perdere tempo", "Fissare la memoria", "Svegliarsi stanchi", "Niente"], "c": 1 },
+    { "q": "Quanti bit ci sono in un byte?", "o": ["4", "8", "16", "32"], "c": 1 },
+    { "q": "La 'zona di comfort' è il posto dove...", "o": ["Impari di più", "Non impari quasi nulla di nuovo", "Dormi", "Fai sport"], "c": 1 },
+    { "q": "Quale di questi NON è un linguaggio di programmazione?", "o": ["Python", "Ruby", "Cobalt", "Rust"], "c": 2 }
+  ],
+  "adulti": [
+    { "q": "L'effetto 'spacing': distribuire lo studio nel tempo...", "o": ["Peggiora la memoria", "Migliora molto la memoria a lungo termine", "Non cambia nulla", "Vale solo per i bambini"], "c": 1 },
+    { "q": "Il 'testing effect' dice che ricordi di più se...", "o": ["Rileggi 5 volte", "Ti auto-interroghi", "Sottolinei", "Ascolti musica"], "c": 1 },
+    { "q": "Durante una pausa vera, il cervello...", "o": ["Si spegne", "Consolida e riorganizza le informazioni", "Consuma più zuccheri che mai", "Cancella tutto"], "c": 1 },
+    { "q": "Quante informazioni tiene la memoria di lavoro, circa?", "o": ["4 elementi", "20 elementi", "100 elementi", "Illimitate"], "c": 0 },
+    { "q": "Cosa misura la 'curva dell'oblio' di Ebbinghaus?", "o": ["Quanto dimentichiamo nel tempo", "La velocità di lettura", "L'attenzione visiva", "Il QI"], "c": 0 },
+    { "q": "Il carico cognitivo eccessivo in aula porta a...", "o": ["Più apprendimento", "Meno ritenzione", "Più creatività", "Nessun effetto"], "c": 1 },
+    { "q": "In che anno è caduto il Muro di Berlino?", "o": ["1985", "1989", "1991", "1993"], "c": 1 },
+    { "q": "La modalità 'diffusa' del pensiero si attiva quando...", "o": ["Ti concentri al massimo", "Stacchi e lasci vagare la mente", "Dormi profondamente", "Leggi ad alta voce"], "c": 1 },
+    { "q": "Quanti secondi dura circa la memoria sensoriale visiva?", "o": ["Meno di 1 secondo", "30 secondi", "5 minuti", "1 ora"], "c": 0 },
+    { "q": "L'interleaving (alternare argomenti) rispetto a un blocco solo...", "o": ["È più faticoso ma più efficace", "È sempre peggio", "È identico", "Serve solo in matematica"], "c": 0 },
+    { "q": "Qual è la parte del cervello chiave per la memoria episodica?", "o": ["Cervelletto", "Ippocampo", "Bulbo", "Corteccia visiva"], "c": 1 },
+    { "q": "Dopo una conferenza, quanto si ricorda a 24 ore senza ripasso?", "o": ["Circa il 10-30%", "Circa il 90%", "Tutto", "Nulla"], "c": 0 }
+  ]
+}

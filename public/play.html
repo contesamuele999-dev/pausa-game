@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#0b1020">
+<title>Pausa Game</title>
+<style>
+  :root{ --bg:#0b1020; --card:#151c33; --line:#26304f; --fg:#eef2ff; --dim:#94a3c8;
+         --a:#ef4444; --b:#3b82f6; --c:#eab308; --d:#22c55e; --ok:#22c55e; }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%;overscroll-behavior:none}
+  body{margin:0;background:var(--bg);color:var(--fg);font:17px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;
+       touch-action:manipulation;user-select:none;-webkit-user-select:none}
+  #app{min-height:100%;display:flex;flex-direction:column;padding:env(safe-area-inset-top) 16px env(safe-area-inset-bottom)}
+  header{display:flex;align-items:center;gap:8px;padding:12px 0;font-size:14px;color:var(--dim);flex:0 0 auto}
+  header b{color:var(--fg)}
+  header .sp{flex:1}
+  main{flex:1;display:flex;flex-direction:column;justify-content:center;gap:14px;padding-bottom:16px}
+
+  h1{font-size:26px;margin:0 0 4px;letter-spacing:-.02em}
+  p.dim{color:var(--dim);margin:0}
+  input{width:100%;font:600 22px system-ui;background:var(--card);color:var(--fg);border:1px solid var(--line);
+        border-radius:14px;padding:16px;text-align:center}
+  input#code{letter-spacing:.3em;text-transform:uppercase}
+  button{font:700 19px system-ui;background:#233056;color:var(--fg);border:1px solid var(--line);
+         border-radius:16px;padding:18px;width:100%;cursor:pointer}
+  button.go{background:var(--ok);border-color:var(--ok);color:#052e16}
+  button:disabled{opacity:.45}
+
+  .q{font-size:22px;font-weight:700;margin:0 0 4px;text-align:center}
+  .opts{display:grid;gap:10px}
+  .opt{display:flex;align-items:center;gap:12px;text-align:left;border:none;font-size:19px;min-height:72px}
+  .opt i{font-style:normal;font-weight:800;opacity:.6}
+  .opt.o0{background:var(--a)} .opt.o1{background:var(--b)} .opt.o2{background:var(--c);color:#1a1400} .opt.o3{background:var(--d);color:#052e16}
+  .opt.dim{opacity:.25} .opt.win{outline:4px solid #fff;outline-offset:-4px}
+
+  .pad{flex:1;min-height:52vh;border-radius:24px;display:flex;align-items:center;justify-content:center;
+       font-size:34px;font-weight:800;text-align:center;padding:20px;border:none;color:#fff}
+  .pad.wait{background:#7f1d1d} .pad.go{background:#15803d} .pad.res{background:#1e2745}
+  .pad.tap{background:linear-gradient(160deg,#3b82f6,#22c55e);color:#04210f}
+  .pad:active{filter:brightness(1.15)}
+
+  .bar{height:14px;border-radius:999px;background:#0e1530;border:1px solid var(--line);overflow:hidden}
+  .bar>div{height:100%;background:linear-gradient(90deg,#3b82f6,#22c55e)}
+
+  ol{list-style:none;margin:0;padding:0}
+  ol li{display:flex;gap:10px;padding:8px 2px;border-bottom:1px solid var(--line);font-size:15px}
+  ol li span{color:var(--dim);min-width:1.6em} ol li b{margin-left:auto}
+  .big{font-size:44px;font-weight:800;text-align:center;line-height:1.1}
+  .mid{font-size:20px;text-align:center;color:var(--dim)}
+  .err{color:#fca5a5;text-align:center;min-height:1.2em}
+  .hide{display:none!important}
+</style>
+</head>
+<body>
+<div id="app">
+  <header id="bar" class="hide">
+    <b id="hname">—</b><span class="sp"></span>
+    <span id="hrank"></span><b id="hscore">0</b>
+  </header>
+  <main id="main"></main>
+</div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const LET = ['A','B','C','D'];
+const esc = (s) => String(s).replace(/[<>&]/g, (c) => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
+const qs = new URLSearchParams(location.search);
+
+let ws, pid = null, code = (qs.get('r') || '').toUpperCase(), joined = false, lastHtml = '';
+
+function store(c) { try { return localStorage.getItem('pid:' + c); } catch { return null; } }
+function keep(c, v) { try { localStorage.setItem('pid:' + c, v); } catch {} }
+
+function connect() {
+  ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host);
+  ws.onopen = () => { if (joined) doJoin(); };
+  ws.onmessage = (e) => {
+    const m = JSON.parse(e.data);
+    if (m.t === 'err') { $('#err') && ($('#err').textContent = m.msg); joined = false; return; }
+    if (m.t === 'joined') { pid = m.pid; keep(m.code, m.pid); joined = true; return; }
+    if (m.t === 'you') render(m);
+  };
+  ws.onclose = () => setTimeout(connect, 1000);
+}
+
+let myName = '';
+function doJoin() {
+  ws.send(JSON.stringify({ t: 'join', code, name: myName, pid: pid || store(code) }));
+}
+
+function login() {
+  $('#bar').classList.add('hide');
+  $('#main').innerHTML = `
+    <div><h1>Pausa Game</h1><p class="dim">Entra e gioca con la sala.</p></div>
+    <input id="code" maxlength="4" placeholder="CODICE" value="${esc(code)}" autocomplete="off">
+    <input id="name" maxlength="14" placeholder="Il tuo nome" autocomplete="off">
+    <button class="go" id="enter">ENTRA</button>
+    <div class="err" id="err"></div>`;
+  const go = () => {
+    code = $('#code').value.trim().toUpperCase();
+    myName = $('#name').value.trim();
+    if (code.length !== 4 || !myName) { $('#err').textContent = 'Serve codice a 4 lettere e nome'; return; }
+    pid = store(code);
+    joined = true;
+    wake();
+    if (ws.readyState === 1) doJoin();
+  };
+  $('#enter').onclick = go;
+  $('#name').addEventListener('keydown', (e) => e.key === 'Enter' && go());
+  (code ? $('#name') : $('#code')).focus();
+}
+
+function render(s) {
+  $('#bar').classList.remove('hide');
+  $('#hname').textContent = s.name;
+  $('#hscore').textContent = s.score;
+  $('#hrank').textContent = s.rank ? `${s.rank}º di ${s.of} · ` : '';
+  // "Insieme" aggiorna 7 volte al secondo: non ricostruire il bottone sotto il dito
+  if (s.game === 'insieme' && s.view.phase === 'play' && $('#fill')) {
+    $('#fill').style.width = s.view.pct + '%';
+    $('#taps').textContent = s.view.taps + ' tocchi';
+    $('#meta').textContent = `Round ${s.view.n}/${s.view.tot} · ${s.view.left}s · ${s.view.pct}%`;
+    return;
+  }
+  const html = s.game ? ({ quiz: quizV, riflessi: riflessiV, insieme: insiemeV })[s.game](s.view, s) : lobbyV(s);
+  if (html !== lastHtml) { $('#main').innerHTML = html; lastHtml = html; }
+}
+
+function lobbyV(s) {
+  return `<div class="big">✋</div><div class="mid">Sei dentro, ${esc(s.name)}.<br>Aspetta il via dallo schermo.</div>
+    ${s.top.length ? `<ol style="margin-top:20px">${s.top.map((p) => `<li><span>${p.rank}</span>${esc(p.name)}<b>${p.score}</b></li>`).join('')}</ol>` : ''}`;
+}
+
+function quizV(v, s) {
+  if (v.phase === 'via') return `<div class="big">Pronto?</div><div class="mid">${v.tot} domande</div>`;
+  if (v.phase === 'fine') return fineV(s);
+  const rev = v.phase === 'risposta';
+  return `<div class="mid">Domanda ${v.n}/${v.tot}${rev ? '' : ' · ' + v.left + 's'}</div>
+    <p class="q">${esc(v.q)}</p>
+    <div class="opts">${v.o.map((o, i) => `
+      <button class="opt o${i} ${rev ? (i === v.c ? 'win' : 'dim') : (v.pick != null && v.pick !== i ? 'dim' : '')}"
+        data-pick="${i}" ${rev || v.pick != null ? 'disabled' : ''}><i>${LET[i]}</i>${esc(o)}</button>`).join('')}</div>
+    ${rev ? `<div class="mid">${v.ok ? '✅ Giusto!' : (v.pick == null ? '⏳ Niente risposta' : '❌ Sbagliato')}</div>` : ''}`;
+}
+
+function riflessiV(v, s) {
+  if (v.phase === 'fine') return fineV(s);
+  if (v.phase === 'esito')
+    return `<div class="pad res">${v.early ? 'Partito prima 🙈' : v.ms != null ? v.ms + ' ms' : 'Non hai toccato'}</div>`;
+  if (v.phase === 'attesa')
+    return `<button class="pad wait" data-tap="1">${v.early ? 'Fermo! Aspetta il prossimo round' : 'ASPETTA il verde…'}</button>`;
+  return `<button class="pad go" data-tap="1">${v.ms != null ? v.ms + ' ms' : 'TOCCA!'}</button>`;
+}
+
+function insiemeV(v, s) {
+  if (v.phase === 'fine') return fineV(s);
+  if (v.phase === 'esito') return `<div class="pad res">${v.won ? 'FATTO! 🎉' : 'Quasi…'}</div>`;
+  return `<button class="pad tap" data-tap="1">BATTI!<br><span style="font-size:.5em" id="taps">${v.taps} tocchi</span></button>
+    <div class="bar"><div id="fill" style="width:${v.pct}%"></div></div>
+    <div class="mid" id="meta">Round ${v.n}/${v.tot} · ${v.left}s · ${v.pct}%</div>`;
+}
+
+function fineV(s) {
+  const m = s.top.find((p) => p.name === s.name);
+  return `<div class="big">${s.rank === 1 ? '🥇' : s.rank === 2 ? '🥈' : s.rank === 3 ? '🥉' : '👏'}</div>
+    <div class="mid">${s.rank}º su ${s.of} · ${s.score} punti</div>
+    <ol style="margin-top:16px">${s.top.map((p) => `<li><span>${p.rank}</span>${esc(p.name)}<b>${p.score}</b></li>`).join('')}</ol>`;
+}
+
+// un solo listener: i bottoni vengono ridisegnati a ogni frame
+$('#main').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-pick],[data-tap]');
+  if (!b || ws.readyState !== 1) return;
+  if (navigator.vibrate) navigator.vibrate(12);
+  ws.send(JSON.stringify(b.dataset.tap ? { tap: 1 } : { pick: +b.dataset.pick }));
+});
+
+// lo schermo del telefono non deve bloccarsi a meta' partita
+async function wake() { try { await navigator.wakeLock.request('screen'); } catch {} }
+document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && wake());
+
+login();
+connect();
+</script>
+</body>
+</html>
