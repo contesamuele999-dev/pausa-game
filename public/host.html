@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Pausa Game — Schermo</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.92em' font-size='92'>🏆</text></svg>">
 <style>
   :root{
     --bg:#0b1020; --card:#151c33; --line:#26304f; --fg:#eef2ff; --dim:#94a3c8;
@@ -160,11 +161,11 @@ function render(s) {
   $('#board').classList.toggle('hide', !playing);
 
   if (!playing) {
-    $('#names').innerHTML = s.players.map((p) => `<span class="name ${p.on ? '' : 'off'}">${esc(p.name)}</span>`).join('');
+    $('#names').innerHTML = s.players.map((p) => `<span class="name ${p.on ? '' : 'off'}">${p.ch} ${esc(p.name)}</span>`).join('');
     return;
   }
   $('#board').innerHTML = s.players.slice(0, 12)
-    .map((p) => `<li><span>${p.rank}</span>${esc(p.name)}<b>${p.score}</b></li>`).join('');
+    .map((p) => `<li><span>${p.rank}</span>${p.ch} ${esc(p.name)}<b>${p.score}</b></li>`).join('');
   $('#stagebox').innerHTML = VIEWS[s.game](s.view, s);
 
   // le fasi che avanzano solo su decisione dell'host espongono un'etichetta
@@ -176,7 +177,7 @@ function render(s) {
 function podio(s) {
   const t = s.players.slice(0, 3);
   return `<div class="big">Classifica</div>
-    <ol class="board" style="margin-top:2vh">${t.map((p) => `<li><span>${'🥇🥈🥉'[p.rank - 1] || p.rank}</span>${esc(p.name)}<b>${p.score}</b></li>`).join('')}</ol>
+    <ol class="board" style="margin-top:2vh">${t.map((p) => `<li><span>${'🥇🥈🥉'[p.rank - 1] || p.rank}</span>${p.ch} ${esc(p.name)}<b>${p.score}</b></li>`).join('')}</ol>
     <div class="sub" style="margin-top:2vh">Premio ai primi. Poi "Termina" per tornare al QR.</div>`;
 }
 
@@ -216,7 +217,7 @@ function corsaView(v, s) {
   return `<div class="sub">${v.left}s al termine</div>
     <div class="lanes" style="margin-top:2vh">${v.piloti.map((p, i) => `
       <div class="lane"><u>${i + 1}</u><em>${esc(p.name)}</em>
-        <div class="track"><i class="${p.turbo ? 'turbo' : ''}" style="left:${Math.max(3, p.pct)}%">${p.turbo ? '🚀' : '🏎️'}</i></div>
+        <div class="track"><i class="${p.turbo ? 'turbo' : ''}" style="left:${Math.max(3, p.pct)}%">${p.turbo ? '🚀' : p.ch}</i></div>
         <b style="min-width:2.6em;text-align:right">${p.pct}%</b></div>`).join('')}</div>`;
 }
 
@@ -231,7 +232,7 @@ function saltoView(v, s) {
       <div class="big" style="font-size:clamp(22px,3vw,48px)">${v.tipo === 0 ? 'SALTA!' : 'RESTA GIÙ!'}</div>
       <div class="timer"><div style="width:${pct}%"></div></div>
     </div>
-    <div class="sub">${v.nomi.map(esc).join(' · ')}</div>`;
+    <div class="sub">${v.nomi.map((n) => n.ch + ' ' + esc(n.name)).join('  ')}</div>`;
 }
 
 const VIEWS = { quiz: quizView, riflessi: riflessiView, insieme: insiemeView, corsa: corsaView, salto: saltoView };

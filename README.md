@@ -22,6 +22,18 @@ Il refresh della pagina host non perde la stanza. Chi blocca il telefono rientra
 | **Corsa** 🏎️ | dai 6 anni in su | Kart. Si avanza alternando i due pedali, sinistra-destra-sinistra. Martellare sempre lo stesso non porta da nessuna parte. Pedana turbo ogni 25 metri, podio ai primi tre al traguardo. | ~1 min |
 | **Salta** 🦘 | tutti, a eliminazione | Arrivano ostacoli a tempo: 🌵 a terra si salta, 🦅 in alto si resta giù. Chi sbaglia esce e guarda gli altri. Gli ostacoli si avvicinano sempre di più. | ~30s |
 
+### I personaggi
+
+Entrando ognuno riceve un personaggio (emoji: niente immagini da caricare, si vedono su
+qualsiasi telefono e restano nitide proiettate). In sala d'attesa si tocca per cambiarlo,
+a partita iniziata è bloccato. Compare in classifica, nelle corsie della **Corsa** e tra
+chi è ancora in pista su **Salta**.
+
+Sul telefono non è decorativo: nella Corsa è il tuo kart che avanza sulla pista fino alla
+bandiera a scacchi (e diventa 🚀 sulla pedana turbo), in Salta è il personaggio che scavalca
+l'ostacolo in arrivo da destra — guardando il telefono capisci il tempo senza alzare gli occhi
+allo schermo. Ampliali o cambiali nella lista `PERSONAGGI` in cima a `server.js`.
+
 ### Le risposte del quiz le decidi tu
 
 Durante il quiz nessuno vede la soluzione: né lo schermo né i telefoni. Si risponde e si passa

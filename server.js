@@ -10,6 +10,10 @@ const TICK_MS = 150;
 const ROOM_TTL = 3 * 60 * 60 * 1000;
 const ALPHABET = 'ACDEFGHJKLMNPQRSTUVWXYZ2345679'; // niente 0/O/1/I/B/8: si leggono male da lontano
 
+// Il personaggio con cui si gioca. Niente immagini da caricare: sono emoji, si vedono
+// su qualsiasi telefono e restano nitide proiettate.
+const PERSONAGGI = ['🦊','🐼','🐸','🐵','🐙','🦄','🐯','🐨','🦁','🐧','🐢','🦖','🐝','🦉','🐬','🦩','🐳','🦔','🐰','🐻'];
+
 const rooms = new Map();
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
@@ -34,7 +38,7 @@ function newCode() {
 function standings(room) {
   return [...room.players.values()]
     .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name))
-    .map((p, i) => ({ pid: p.pid, name: p.name, score: p.score, rank: i + 1, on: p.ws ? 1 : 0 }));
+    .map((p, i) => ({ pid: p.pid, name: p.name, ch: p.ch, score: p.score, rank: i + 1, on: p.ws ? 1 : 0 }));
 }
 
 function resetScores(room) {
@@ -440,6 +444,7 @@ GAMES.corsa = {
     const piloti = [...room.players.values()]
       .map((p) => ({
         name: p.name,
+        ch: p.ch,
         pct: Math.round(clamp((g.pos.get(p.pid) || 0) / this.META, 0, 1) * 100),
         turbo: (g.boost.get(p.pid) || 0) > now ? 1 : 0,
         fin: g.fin.indexOf(p.pid)
@@ -553,7 +558,10 @@ GAMES.salto = {
       into: Math.max(0, g.next - now),
       gap: this.gap(g.beat),
       vivi: vivi.length,
-      nomi: vivi.slice(0, 14).map(([pid]) => (room.players.get(pid) ? room.players.get(pid).name : '?'))
+      nomi: vivi.slice(0, 14).map(([pid]) => {
+        const p = room.players.get(pid);
+        return { ch: p ? p.ch : '👤', name: p ? p.name : '?' };
+      })
     };
   },
 
@@ -598,6 +606,7 @@ function playerState(room, p, now) {
     t: 'you',
     code: room.code,
     name: p.name,
+    ch: p.ch,
     score: me ? me.score : 0,
     rank: me ? me.rank : 0,
     of: all.length,
@@ -696,7 +705,10 @@ wss.on('connection', (ws, req) => {
         p.name = name;
       } else {
         if (r.players.size >= 300) return send(ws, { t: 'err', msg: 'Stanza piena' });
-        p = { pid: Math.random().toString(36).slice(2, 10), name, score: 0, ws, lastTap: 0 };
+        const presi = new Set([...r.players.values()].map((x) => x.ch));
+        const liberi = PERSONAGGI.filter((c) => !presi.has(c));
+        const ch = (liberi.length ? liberi : PERSONAGGI)[(Math.random() * (liberi.length || PERSONAGGI.length)) | 0];
+        p = { pid: Math.random().toString(36).slice(2, 10), name, ch, score: 0, ws, lastTap: 0 };
         r.players.set(p.pid, p);
       }
       ws.role = 'player';
@@ -733,9 +745,16 @@ wss.on('connection', (ws, req) => {
     }
 
     // --- input giocatore
-    if (ws.role === 'player' && room.game) {
+    if (ws.role === 'player') {
       const p = room.players.get(ws.pid);
-      if (p && GAMES[room.game].input(room, p, m)) room.dirty = true;
+      if (!p) return;
+      // cambio personaggio: solo in sala d'attesa, cosi' nessuno ci gioca a partita in corso
+      if (m.t === 'skin' && !room.game) {
+        p.ch = PERSONAGGI[(PERSONAGGI.indexOf(p.ch) + 1) % PERSONAGGI.length];
+        room.dirty = true;
+        return;
+      }
+      if (room.game && GAMES[room.game].input(room, p, m)) room.dirty = true;
     }
   });
 
@@ -772,4 +791,4 @@ if (require.main === module) {
   server.listen(port, () => console.log(`Pausa Game su http://localhost:${port}  (schermo: /host)`));
 }
 
-module.exports = { GAMES, rooms, standings };
+module.exports = { GAMES, rooms, standings, PERSONAGGI };
