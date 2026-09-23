@@ -479,19 +479,29 @@ GAMES.corsa = {
 //     restando giu'. Chi sbaglia esce. Vince chi resta in pista piu' a lungo.
 GAMES.salto = {
   label: 'Salta',
-  live: ['corsa'],
-  TOT: 15,
-  AIR: 700, // quanto resti per aria dopo il tocco
+  // Niente fase "live": telefono e schermo animano da soli tra un ostacolo e l'altro,
+  // quindi si trasmette solo quando un ostacolo si risolve. Meno traffico e soprattutto
+  // niente scatti da 150 millisecondi.
+  live: [],
+  TOT: 24,
+  AIR: 800,  // quanto resti per aria dopo il tocco
+  VITE: 3,   // tre errori prima di uscire: cosi' si gioca fino in fondo, non 20 secondi
 
   gap(beat) {
-    return Math.max(1200, 2600 - beat * 95);
+    return Math.max(1150, 2700 - beat * 90);
   },
 
   start(room) {
     room.level = null;
-    room.g = { phase: 'via', until: Date.now() + 3500, beat: 0, tipo: 0, next: 0, vivo: new Map(), aria: new Map(), fuori: new Map() };
+    room.g = { phase: 'via', until: Date.now() + 3500, beat: 0, tipo: 0, next: 0, vite: new Map(), aria: new Map(), fuori: new Map() };
     resetScores(room);
-    for (const p of room.players.values()) room.g.vivo.set(p.pid, true);
+    for (const p of room.players.values()) room.g.vite.set(p.pid, this.VITE);
+  },
+
+  _vivi(g) {
+    let n = 0;
+    for (const v of g.vite.values()) if (v > 0) n++;
+    return n;
   },
 
   tick(room, now) {
@@ -502,32 +512,31 @@ GAMES.salto = {
       if (now < g.until) return false;
       g.phase = 'corsa';
       g.tipo = Math.random() < 0.5 ? 0 : 1;
-      g.next = now + 2400;
+      g.next = now + 2700;
       return true;
     }
 
     if (now < g.next) return false;
 
-    // arriva l'ostacolo: chi e' nello stato sbagliato esce
-    for (const [pid, vivo] of g.vivo) {
-      if (!vivo) continue;
+    // arriva l'ostacolo: chi e' nello stato sbagliato perde una vita
+    for (const [pid, vite] of g.vite) {
+      if (vite <= 0) continue;
       const p = room.players.get(pid);
       const inAria = (g.aria.get(pid) || 0) > now;
       const salvo = g.tipo === 0 ? inAria : !inAria;
       if (salvo) {
         if (p) p.score += 100;
       } else {
-        g.vivo.set(pid, false);
-        g.fuori.set(pid, g.beat + 1);
+        g.vite.set(pid, vite - 1);
+        if (vite - 1 <= 0) g.fuori.set(pid, g.beat + 1);
       }
     }
     g.beat++;
 
-    const vivi = [...g.vivo.values()].filter(Boolean).length;
-    if (g.beat >= this.TOT || vivi === 0) {
-      for (const [pid, vivo] of g.vivo) {
+    if (g.beat >= this.TOT || this._vivi(g) === 0) {
+      for (const [pid, vite] of g.vite) {
         const p = room.players.get(pid);
-        if (vivo && p) p.score += 500; // bonus a chi arriva in fondo
+        if (vite > 0 && p) p.score += 200 * vite; // bonus finale, piu' alto se arrivi intatto
       }
       g.phase = 'fine';
       return true;
@@ -540,16 +549,16 @@ GAMES.salto = {
   input(room, p, m) {
     const g = room.g;
     if (m.tap !== 1 || g.phase !== 'corsa') return false;
-    if (g.vivo.get(p.pid) !== true) return false;
+    if ((g.vite.get(p.pid) || 0) <= 0) return false;
     const now = Date.now();
     if ((g.aria.get(p.pid) || 0) > now) return false; // gia' per aria
     g.aria.set(p.pid, now + this.AIR);
-    return true;
+    return false; // il salto si vede subito sul telefono: non serve ritrasmettere a tutti
   },
 
   hostView(room, now) {
     const g = room.g;
-    const vivi = [...g.vivo].filter(([, v]) => v);
+    const vivi = [...g.vite].filter(([, v]) => v > 0);
     return {
       phase: g.phase,
       beat: g.beat + 1,
@@ -558,16 +567,16 @@ GAMES.salto = {
       into: Math.max(0, g.next - now),
       gap: this.gap(g.beat),
       vivi: vivi.length,
-      nomi: vivi.slice(0, 14).map(([pid]) => {
+      nomi: vivi.slice(0, 14).map(([pid, v]) => {
         const p = room.players.get(pid);
-        return { ch: p ? p.ch : '👤', name: p ? p.name : '?' };
+        return { ch: p ? p.ch : 'X', name: p ? p.name : '?', vite: v };
       })
     };
   },
 
   playerView(room, p, now) {
     const g = room.g;
-    const stato = g.vivo.get(p.pid);
+    const vite = g.vite.get(p.pid);
     return {
       phase: g.phase,
       beat: g.beat + 1,
@@ -575,8 +584,11 @@ GAMES.salto = {
       tipo: g.tipo,
       into: Math.max(0, g.next - now),
       gap: this.gap(g.beat),
-      vivi: [...g.vivo.values()].filter(Boolean).length,
-      stato: stato === true ? 'vivo' : stato === false ? 'fuori' : 'spettatore',
+      airMs: this.AIR,
+      vite: vite == null ? null : vite,
+      viteMax: this.VITE,
+      vivi: this._vivi(g),
+      stato: vite == null ? 'spettatore' : vite > 0 ? 'vivo' : 'fuori',
       fuoriAl: g.fuori.get(p.pid) || null,
       aria: (g.aria.get(p.pid) || 0) > now ? 1 : 0
     };

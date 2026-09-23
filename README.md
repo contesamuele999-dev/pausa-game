@@ -20,7 +20,7 @@ Il refresh della pagina host non perde la stanza. Chi blocca il telefono rientra
 | **Riflessi** | tutti, ottimo per i bambini (non serve leggere) | 5 round. Schermo rosso, poi verde: chi tocca prima vince. Partenza anticipata = 0 punti. | ~1 min |
 | **Insieme** | tutta la sala, cooperativo | 3 round da 30s. Tutti battono sul telefono per riempire una barra che si svuota da sola. Se ce la fate, punti a tutti (di più a chi ha battuto di più). | ~2 min |
 | **Corsa** 🏎️ | dai 6 anni in su | Kart. Si avanza alternando i due pedali, sinistra-destra-sinistra. Martellare sempre lo stesso non porta da nessuna parte. Pedana turbo ogni 25 metri, podio ai primi tre al traguardo. | ~1 min |
-| **Salta** 🦘 | tutti, a eliminazione | Arrivano ostacoli a tempo: 🌵 a terra si salta, 🦅 in alto si resta giù. Chi sbaglia esce e guarda gli altri. Gli ostacoli si avvicinano sempre di più. | ~30s |
+| **Salta** 🦘 | tutti | 24 ostacoli a tempo: 🌵 a terra si salta, 🦅 in alto si resta giù. Tre vite a testa, così si gioca fino in fondo invece di uscire al primo errore. Gli ostacoli si stringono da 2,7s a 1,15s. | ~45s |
 
 ### I personaggi
 

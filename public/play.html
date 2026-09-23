@@ -58,13 +58,14 @@
            transition:left .12s linear}
 
   /* salta: la scena dentro il bottone */
-  .scene{position:relative;width:100%;height:120px;overflow:hidden}
-  .scene::after{content:'';position:absolute;left:0;right:0;bottom:22px;height:3px;background:rgba(255,255,255,.35)}
-  .scene i{position:absolute;bottom:25px;font-style:normal;font-size:44px;line-height:1;transition:bottom .12s ease-out}
-  .scene i#hero{left:14%;transform:translateX(-50%)}
-  .scene i#hero.up{bottom:78px}
-  .scene i#ob{transform:translateX(-50%);transition:left .14s linear}
-  .scene i#ob.alto{bottom:74px}
+  .scene{position:relative;width:100%;height:150px;overflow:hidden}
+  .scene::after{content:'';position:absolute;left:0;right:0;bottom:26px;height:3px;background:rgba(255,255,255,.35)}
+  .scene i{position:absolute;bottom:30px;font-style:normal;font-size:46px;line-height:1;will-change:bottom,left}
+  .scene i#hero{left:16%;transform:translateX(-50%);transition:bottom .19s cubic-bezier(.2,.7,.3,1)}
+  .scene i#hero.up{bottom:104px}
+  .scene i#ob{transform:translateX(-50%)}
+  .scene i#ob.alto{bottom:98px}
+  .cuori{letter-spacing:2px}
 
   /* corsa: due pedali da alternare */
   .pedals{flex:1;min-height:42vh;display:grid;grid-template-columns:1fr 1fr;gap:12px}
@@ -164,6 +165,7 @@ function render(s) {
   const g = G[s.game];
   if (g.can && g.can(s.view) && $('#live')) { g.patch(s.view, s); lastHtml = null; return; }
   set(g.view(s.view, s));
+  if (s.game === 'salto' && s.view.phase === 'corsa' && s.view.stato === 'vivo') volaOstacolo(s.view);
 }
 
 function set(html) { if (html !== lastHtml) { $('#main').innerHTML = html; lastHtml = html; } }
@@ -262,39 +264,78 @@ function corsaP(v, s) {
 }
 
 // ---------- salta: 🌵 a terra si salta, 🦅 in alto si resta giù
+// Il server trasmette una volta per ostacolo, non 7 volte al secondo: l'ostacolo lo
+// fa volare il CSS, che interpola sulla scheda grafica. Risultato fluido anche sui
+// telefoni lenti, e il salto parte subito senza aspettare il giro di rete.
+const PARTENZA = 104, ARRIVO = 16; // percentuali: da dove entra l'ostacolo e dove colpisce
+let airUntil = 0, airMs = 800;
+
+function cuori(v) {
+  return '❤️'.repeat(v.vite) + '🖤'.repeat(Math.max(0, v.viteMax - v.vite));
+}
+
 function saltoV(v, s) {
-  if (v.phase === 'via')
-    return `<div class="hero">${s.ch}</div><div class="mid">🌵 a terra: <b>salta</b>.<br>🦅 in alto: <b>resta giù</b>.<br><br>Chi sbaglia esce.</div>`;
+  if (v.phase === 'via') {
+    airUntil = 0;
+    return `<div class="hero">${s.ch}</div><div class="mid">🌵 a terra: <b>salta</b>.<br>🦅 in alto: <b>resta giù</b>.
+      <br><br>Hai ${v.viteMax} vite: ${'❤️'.repeat(v.viteMax)}</div>`;
+  }
   if (v.phase === 'fine') return fineV(s);
   if (v.stato === 'fuori')
     return `<div class="big">💥</div><div class="hero">${s.ch}</div>
-      <div class="mid">Fuori all'ostacolo ${v.fuoriAl} su ${v.tot}.<br>${v.vivi} ancora in pista.</div>`;
+      <div class="mid">Vite finite all'ostacolo ${v.fuoriAl} su ${v.tot}.<br>${v.vivi} ancora in pista.</div>`;
   if (v.stato === 'spettatore')
     return `<div class="hero">${s.ch}</div><div class="mid">Sei entrato a giro iniziato.<br>Guarda e aspetta il prossimo.</div>`;
+  airMs = v.airMs;
   return `<div id="live" style="display:flex;flex-direction:column;gap:14px;flex:1">
-    <div class="mid" id="meta">Ostacolo ${v.beat}/${v.tot} · ${v.vivi} in pista</div>
+    <div class="mid" id="meta">Ostacolo ${v.beat}/${v.tot} · <span class="cuori">${cuori(v)}</span> · ${v.vivi} in pista</div>
     <button class="pad ${v.tipo === 0 ? 'jump' : 'duck'}" id="jump" data-tap="1">
       <div style="width:100%">
         <div class="scene">
-          <i id="hero" class="${v.aria ? 'up' : ''}">${s.ch}</i>
-          <i id="ob" class="${v.tipo === 1 ? 'alto' : ''}" style="left:${obLeft(v)}%">${v.tipo === 0 ? '🌵' : '🦅'}</i>
+          <i id="hero">${s.ch}</i>
+          <i id="ob" class="${v.tipo === 1 ? 'alto' : ''}">${v.tipo === 0 ? '🌵' : '🦅'}</i>
         </div>
         <span id="sign" style="font-size:24px">${v.tipo === 0 ? '🌵 SALTA' : '🦅 RESTA GIÙ'}</span>
       </div></button></div>`;
 }
-// L'ostacolo entra da destra e arriva addosso al personaggio quando il tempo scade:
-// e' il timer, guardarlo basta per capire quando toccare.
-function obLeft(v) { return 14 + (v.into / v.gap) * 86; }
-function saltoP(v, s) {
+
+// Un solo avvio per ostacolo: lo piazza dove si trova ora e lo lascia scorrere
+// fino al personaggio nel tempo che manca davvero all'impatto.
+function volaOstacolo(v) {
   const ob = $('#ob');
-  ob.style.left = obLeft(v) + '%';
+  if (!ob) return;
+  const da = ARRIVO + (v.into / v.gap) * (PARTENZA - ARRIVO);
+  ob.style.transition = 'none';
+  ob.style.left = da + '%';
+  void ob.offsetWidth; // forza il reflow, altrimenti il browser fonde le due scritture
+  ob.style.transition = `left ${v.into}ms linear`;
+  ob.style.left = ARRIVO + '%';
+}
+
+function saltoP(v, s) {
+  airMs = v.airMs;
+  const ob = $('#ob');
   ob.textContent = v.tipo === 0 ? '🌵' : '🦅';
   ob.classList.toggle('alto', v.tipo === 1);
   $('#hero').textContent = s.ch;
-  $('#hero').classList.toggle('up', !!v.aria);
-  $('#meta').textContent = `Ostacolo ${v.beat}/${v.tot} · ${v.vivi} in pista`;
+  $('#meta').innerHTML = `Ostacolo ${v.beat}/${v.tot} · <span class="cuori">${cuori(v)}</span> · ${v.vivi} in pista`;
   $('#jump').className = 'pad ' + (v.tipo === 0 ? 'jump' : 'duck');
   $('#sign').textContent = v.tipo === 0 ? '🌵 SALTA' : '🦅 RESTA GIÙ';
+  volaOstacolo(v);
+}
+
+// Il salto e' locale: stessa regola del server (niente doppio salto mentre sei per
+// aria), cosi' il personaggio parte al tocco invece che dopo il giro di rete.
+function salta() {
+  const ora = performance.now();
+  if (ora < airUntil) return false;
+  airUntil = ora + airMs;
+  const h = $('#hero');
+  if (h) {
+    h.classList.add('up');
+    setTimeout(() => h.classList.remove('up'), airMs);
+  }
+  return true;
 }
 
 // un solo listener: i bottoni vengono ridisegnati a ogni cambio di fase
@@ -303,6 +344,7 @@ $('#main').addEventListener('click', (e) => {
   if (!b || ws.readyState !== 1) return;
   if (navigator.vibrate) navigator.vibrate(12);
   if (b.dataset.skin) return ws.send(JSON.stringify({ t: 'skin' }));
+  if (b.id === 'jump') { salta(); return ws.send(JSON.stringify({ tap: 1 })); }
   if (b.dataset.lane) {
     const lane = +b.dataset.lane;
     if (lane === myExp) { myExp = 1 - myExp; pedali(); } // previsione locale, niente attesa

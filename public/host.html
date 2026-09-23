@@ -68,7 +68,7 @@
   .run{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2vh}
   .sign{font-size:clamp(60px,12vw,190px);line-height:1}
   .timer{width:70%;height:3vh;border-radius:999px;background:#0e1530;border:1px solid var(--line);overflow:hidden}
-  .timer>div{height:100%;background:#f59e0b}
+  .timer>div{height:100%;width:100%;background:#f59e0b;will-change:width}
 
   ol.board{list-style:none;margin:0;padding:0;overflow:auto}
   ol.board li{display:flex;align-items:center;gap:1rem;padding:.7vh .4rem;font-size:clamp(15px,1.5vw,26px);border-bottom:1px solid var(--line)}
@@ -167,6 +167,7 @@ function render(s) {
   $('#board').innerHTML = s.players.slice(0, 12)
     .map((p) => `<li><span>${p.rank}</span>${p.ch} ${esc(p.name)}<b>${p.score}</b></li>`).join('');
   $('#stagebox').innerHTML = VIEWS[s.game](s.view, s);
+  if (s.game === 'salto' && s.view.phase === 'corsa') animaTimer(s.view);
 
   // le fasi che avanzano solo su decisione dell'host espongono un'etichetta
   const lab = s.view && s.view.nextLabel;
@@ -223,16 +224,27 @@ function corsaView(v, s) {
 
 function saltoView(v, s) {
   if (v.phase === 'via')
-    return `<div class="big">🦘</div><div class="sub">🌵 a terra: <b>salta</b>. 🦅 in alto: <b>resta giù</b>.<br>Chi sbaglia esce.</div>`;
+    return `<div class="big">🦘</div><div class="sub">🌵 a terra: <b>salta</b>. 🦅 in alto: <b>resta giù</b>.<br>Tre vite a testa.</div>`;
   if (v.phase === 'fine') return podio(s);
-  const pct = Math.round((v.into / v.gap) * 100);
   return `<div class="sub">Ostacolo ${v.beat}/${v.tot} · ${v.vivi} ancora in pista</div>
     <div class="run">
       <div class="sign">${v.tipo === 0 ? '🌵' : '🦅'}</div>
       <div class="big" style="font-size:clamp(22px,3vw,48px)">${v.tipo === 0 ? 'SALTA!' : 'RESTA GIÙ!'}</div>
-      <div class="timer"><div style="width:${pct}%"></div></div>
+      <div class="timer"><div id="tfill"></div></div>
     </div>
-    <div class="sub">${v.nomi.map((n) => n.ch + ' ' + esc(n.name)).join('  ')}</div>`;
+    <div class="sub">${v.nomi.map((n) => n.ch + ' ' + esc(n.name) + '&#8202;' + '·'.repeat(n.vite)).join('&nbsp;&nbsp; ')}</div>`;
+}
+
+// Il server manda un messaggio per ostacolo, non sette al secondo: la barra la svuota
+// il CSS nel tempo esatto che manca all'impatto, cosi' scorre liscia sul proiettore.
+function animaTimer(v) {
+  const el = $('#tfill');
+  if (!el) return;
+  el.style.transition = 'none';
+  el.style.width = Math.round((v.into / v.gap) * 100) + '%';
+  void el.offsetWidth;
+  el.style.transition = `width ${v.into}ms linear`;
+  el.style.width = '0%';
 }
 
 const VIEWS = { quiz: quizView, riflessi: riflessiView, insieme: insiemeView, corsa: corsaView, salto: saltoView };

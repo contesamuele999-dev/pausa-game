@@ -180,52 +180,66 @@ function room(names) {
   GAMES.salto.start(r);
   GAMES.salto.tick(r, r.g.until); // via -> corsa
   assert.equal(r.g.phase, 'corsa');
-  assert.equal([...r.g.vivo.values()].filter(Boolean).length, 3);
+  assert.equal(GAMES.salto._vivi(r.g), 3);
+  assert.equal(r.g.vite.get('p0'), GAMES.salto.VITE, 'si parte con tutte le vite');
 
-  // ostacolo a terra: chi salta passa, chi resta giu' esce.
-  // l'ostacolo deve arrivare mentre si e' ancora per aria: si salta all'ultimo momento
+  // ostacolo a terra: chi salta passa, chi resta giu' perde una vita ma resta in gioco
   r.g.tipo = 0;
   r.g.next = Date.now() + 300;
-  assert.ok(GAMES.salto.input(r, r.players.get('p0'), { tap: 1 }), 'salto accettato');
-  assert.ok(!GAMES.salto.input(r, r.players.get('p0'), { tap: 1 }), 'in aria non si salta di nuovo');
+  assert.ok(GAMES.salto.input(r, r.players.get('p0'), { tap: 1 }) === false, 'il salto non ritrasmette a tutti');
+  assert.ok(r.g.aria.get('p0') > Date.now(), 'ma il salto e registrato');
   GAMES.salto.tick(r, r.g.next);
-  assert.equal(r.g.vivo.get('p0'), true, 'chi salta supera l ostacolo a terra');
-  assert.equal(r.g.vivo.get('p1'), false, 'chi resta giu esce');
+  assert.equal(r.g.vite.get('p0'), 3, 'chi salta non perde vite');
+  assert.equal(r.g.vite.get('p1'), 2, 'chi sbaglia perde una vita');
+  assert.equal(GAMES.salto._vivi(r.g), 3, 'ma resta in pista');
   assert.equal(r.players.get('p0').score, 100, 'ostacolo superato = 100');
-  assert.equal(r.g.fuori.get('p1'), 1, 'segna a quale ostacolo e uscito');
 
-  // ostacolo in alto: saltare e' l'errore, quindi spammare il salto non paga
-  r.g.tipo = 1;
+  // in aria non si salta di nuovo
   r.g.next = Date.now() + 300;
-  r.g.aria.set('p0', 0); // atterrato
+  r.g.aria.set('p0', Date.now() + 500);
   GAMES.salto.input(r, r.players.get('p0'), { tap: 1 });
-  GAMES.salto.tick(r, r.g.next);
-  assert.equal(r.g.vivo.get('p0'), false, 'chi salta sull ostacolo alto esce');
+  assert.ok(r.g.aria.get('p0') < Date.now() + 600, 'il secondo tocco non prolunga il salto');
 
-  // chi e' fuori non puo' piu' giocare
-  assert.ok(!GAMES.salto.input(r, r.players.get('p0'), { tap: 1 }), 'gli eliminati non toccano piu');
+  // tre errori e si esce
+  r.g.tipo = 1; // ostacolo alto: saltare e l errore, quindi spammare non paga
+  for (let k = 0; k < 3; k++) {
+    r.g.next = Date.now() + 300;
+    r.g.aria.set('p1', 0);
+    r.players.get('p1').lastTap = 0;
+    GAMES.salto.input(r, r.players.get('p1'), { tap: 1 });
+    r.g.tipo = 1;
+    GAMES.salto.tick(r, r.g.next);
+  }
+  assert.equal(r.g.vite.get('p1'), 0, 'finite le vite');
+  assert.equal(r.g.fuori.get('p1') > 0, true, 'segna a quale ostacolo e uscito');
+  assert.ok(!GAMES.salto.input(r, r.players.get('p1'), { tap: 1 }), 'chi e fuori non tocca piu');
 
   // finisce quando non resta nessuno
   let t = r.g.next, guard = 0;
-  while (r.g.phase !== 'fine' && guard++ < 100) { t += 3000; GAMES.salto.tick(r, t); }
+  while (r.g.phase !== 'fine' && guard++ < 200) { t += 3000; GAMES.salto.tick(r, t); }
   assert.equal(r.g.phase, 'fine', 'la corsa finisce');
 
-  // un giro intero senza errori arriva in fondo e paga il bonus
+  // un giro intero senza errori arriva in fondo con tutte le vite e prende il bonus pieno
   const r2 = room(['Solo']);
   r2.game = 'salto';
   GAMES.salto.start(r2);
   GAMES.salto.tick(r2, r2.g.until);
-  let t2 = Date.now(), g2 = 0;
-  while (r2.g.phase !== 'fine' && g2++ < 100) {
+  let g2 = 0;
+  while (r2.g.phase !== 'fine' && g2++ < 200) {
     const p = r2.players.get('p0');
-    r2.g.next = Date.now() + 200;          // l'ostacolo sta per arrivare
-    r2.g.aria.set('p0', 0);                // a terra
+    r2.g.next = Date.now() + 200;  // l ostacolo sta per arrivare
+    r2.g.aria.set('p0', 0);        // a terra
     if (r2.g.tipo === 0) GAMES.salto.input(r2, p, { tap: 1 }); // salta solo se serve
-    t2 = r2.g.next;
-    GAMES.salto.tick(r2, t2);
+    GAMES.salto.tick(r2, r2.g.next);
   }
-  assert.equal(r2.g.vivo.get('p0'), true, 'giocando bene si sopravvive');
-  assert.equal(r2.players.get('p0').score, GAMES.salto.TOT * 100 + 500, 'punti ostacoli + bonus finale');
+  assert.equal(r2.g.vite.get('p0'), GAMES.salto.VITE, 'giocando bene non si perdono vite');
+  assert.equal(r2.players.get('p0').score, GAMES.salto.TOT * 100 + 200 * GAMES.salto.VITE,
+    'punti ostacoli piu bonus finale proporzionale alle vite rimaste');
+
+  // la partita deve durare: almeno mezzo minuto di ostacoli
+  let durata = 0;
+  for (let b = 0; b < GAMES.salto.TOT; b++) durata += GAMES.salto.gap(b);
+  assert.ok(durata > 40000, 'il giro dura piu di 40 secondi, era ' + Math.round(durata / 1000) + 's');
 }
 
 // ---------------- classifica
