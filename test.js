@@ -328,6 +328,90 @@ function room(names) {
   assert.ok(r2.players.get('p0').score > GAMES.rush.TOT * 10, 'e il punteggio cresce con la combo');
 }
 
+// ---------------- stop
+{
+  const r = room(['Ada', 'Bruno', 'Cleo']);
+  r.game = 'stop';
+  GAMES.stop.start(r);
+  GAMES.stop.tick(r, r.g.until); // via -> conta
+  assert.equal(r.g.phase, 'conta');
+  assert.ok(r.g.target >= 5000 && r.g.target <= 10000, 'obiettivo tra 5 e 10 secondi');
+
+  assert.ok(GAMES.stop.input(r, r.players.get('p0'), { tap: 1 }), 'stop accettato');
+  assert.ok(!GAMES.stop.input(r, r.players.get('p0'), { tap: 1 }), 'si ferma una volta sola');
+  // tempi finti: Ada perfetta, Bruno a un secondo, Cleo non ferma
+  r.g.stop.set('p0', r.g.target + 20);
+  r.g.stop.set('p1', r.g.target - 1000);
+  assert.equal(GAMES.stop.playerView(r, r.players.get('p0'), Date.now()).ms, undefined, 'il tempo non si svela durante il round');
+  GAMES.stop.tick(r, r.g.until);
+  assert.equal(r.g.phase, 'esito');
+  assert.equal(r.players.get('p0').score, 800 - 5, 'colpo perfetto con bonus');
+  assert.equal(r.players.get('p1').score, 350, 'un secondo di scarto vale meno');
+  assert.equal(r.players.get('p2').score, 0, 'chi non ferma prende 0');
+  assert.equal(GAMES.stop.punti(-3000), 0, 'troppo lontano = 0, mai negativo');
+  assert.equal(GAMES.stop.hostView(r, Date.now()).top[0].name, 'Ada', 'il piu vicino in cima');
+
+  let t = r.g.until, guard = 0;
+  while (r.g.phase !== 'fine' && guard++ < 50) { t += 20000; GAMES.stop.tick(r, t); }
+  assert.equal(r.g.round, GAMES.stop.TOT, 'si gioca il numero giusto di round');
+}
+
+// ---------------- colori
+{
+  const r = room(['Ada', 'Bruno']);
+  r.game = 'colori';
+  GAMES.colori.start(r);
+  for (let k = 0; k < 300; k++) {
+    GAMES.colori.tick(r, r.g.until);
+    if (r.g.phase === 'fine') GAMES.colori.start(r);
+    if (r.g.phase === 'domanda') assert.notEqual(r.g.parola, r.g.ink, 'la parola non e mai del suo colore');
+  }
+  GAMES.colori.start(r);
+  GAMES.colori.tick(r, r.g.until);
+  assert.equal(r.g.chiedi, 'colore', 'i primi round chiedono il colore');
+  const ok = GAMES.colori.giusta(r.g);
+  assert.equal(ok, r.g.ink);
+  assert.ok(GAMES.colori.input(r, r.players.get('p0'), { pick: ok }));
+  assert.ok(!GAMES.colori.input(r, r.players.get('p0'), { pick: ok }), 'una risposta sola');
+  assert.ok(!GAMES.colori.input(r, r.players.get('p1'), { pick: 7 }), 'fuori range rifiutato');
+  GAMES.colori.input(r, r.players.get('p1'), { pick: r.g.parola }); // cade nel tranello
+  GAMES.colori.tick(r, Date.now());
+  assert.equal(r.g.phase, 'stacco', 'tutti hanno risposto: si chiude subito');
+  assert.ok(r.players.get('p0').score >= 300, 'giusto = punti');
+  assert.equal(r.players.get('p1').score, 0, 'la parola al posto del colore = 0');
+  assert.equal(GAMES.colori.playerView(r, r.players.get('p1'), Date.now()).ok, false);
+}
+
+// ---------------- come la sala
+{
+  const r = room(['Ada', 'Bruno', 'Cleo', 'Dino']);
+  r.game = 'sala';
+  GAMES.sala.start(r);
+  assert.equal(r.g.qs.length, GAMES.sala.TOT, 'bastano i dilemmi per una partita');
+  GAMES.sala.tick(r, r.g.until);
+  assert.equal(r.g.phase, 'voto');
+  const [a, b, c] = ['p0', 'p1', 'p2'].map((k) => r.players.get(k));
+  assert.ok(GAMES.sala.input(r, a, { pick: 0 }));
+  assert.ok(!GAMES.sala.input(r, a, { pick: 1 }), 'niente cambio di voto');
+  assert.ok(!GAMES.sala.input(r, b, { pick: 2 }), 'solo due opzioni');
+  GAMES.sala.input(r, b, { pick: 0 });
+  GAMES.sala.input(r, c, { pick: 1 });
+  GAMES.sala.tick(r, r.g.until);
+  assert.equal(r.g.phase, 'esito');
+  assert.deepEqual(r.g.conta, [2, 1]);
+  assert.equal(a.score, 500, 'con la maggioranza = 500');
+  assert.equal(c.score, 0, 'controcorrente = 0');
+  assert.equal(r.players.get('p3').score, 0, 'chi non vota = 0');
+
+  // pareggio: mezzo premio a tutti quelli che hanno votato
+  GAMES.sala.tick(r, r.g.until);
+  GAMES.sala.input(r, a, { pick: 0 });
+  GAMES.sala.input(r, c, { pick: 1 });
+  GAMES.sala.tick(r, r.g.until);
+  assert.equal(a.score, 750);
+  assert.equal(c.score, 250);
+}
+
 // ---------------- classifica
 {
   const r = room(['Ada', 'Bruno']);

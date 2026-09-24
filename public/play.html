@@ -86,6 +86,22 @@
   .ped.on{opacity:1;background:linear-gradient(160deg,#3b82f6,#1d4ed8);border-color:#60a5fa}
   .ped:active{filter:brightness(1.2)}
 
+  /* colori */
+  .stroop{font-size:64px;font-weight:900;text-align:center;line-height:1}
+  .ink0{color:var(--a)} .ink1{color:var(--b)} .ink2{color:var(--c)} .ink3{color:var(--d)}
+  .sws{flex:1;min-height:38vh;display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .sws button{height:100%;border:none}
+  .bg0{background:var(--a)} .bg1{background:var(--b)} .bg2{background:var(--c)} .bg3{background:var(--d)}
+  .sws button.dim{opacity:.2}
+  .sws button.win{outline:5px solid #fff;outline-offset:-5px}
+
+  /* come la sala */
+  .split{display:flex;height:64px;border-radius:16px;overflow:hidden}
+  .split div{display:flex;align-items:center;justify-content:center;font-weight:800;min-width:0;overflow:hidden}
+
+  a.nplus{display:block;text-align:center;font:700 18px system-ui;color:#fff;text-decoration:none;margin-top:8px;
+          background:linear-gradient(160deg,#7c3aed,#2563eb);border-radius:16px;padding:18px}
+
   .bar{height:14px;border-radius:999px;background:#0e1530;border:1px solid var(--line);overflow:hidden}
   .bar>div{height:100%;background:linear-gradient(90deg,#3b82f6,#22c55e)}
 
@@ -167,7 +183,10 @@ const G = {
   insieme:  { view: insiemeV, can: (v) => v.phase === 'play',  patch: insiemeP },
   corsa:    { view: corsaV,   can: (v) => v.phase === 'gara',  patch: corsaP },
   salto:    { view: saltoV,   can: (v) => v.phase === 'corsa' && v.stato === 'vivo', patch: saltoP },
-  rush:     { view: rushV,    can: (v) => v.phase === 'gioco' && v.stato === 'vivo', patch: rushP }
+  rush:     { view: rushV,    can: (v) => v.phase === 'gioco' && v.stato === 'vivo', patch: rushP },
+  stop:     { view: stopV },
+  colori:   { view: coloriV },
+  sala:     { view: salaV }
 };
 
 function render(s) {
@@ -183,6 +202,7 @@ function render(s) {
   set(g.view(s.view, s));
   if (s.game === 'salto' && s.view.phase === 'corsa' && s.view.stato === 'vivo') volaOstacolo(s.view);
   if (s.game === 'rush' && s.view.phase === 'gioco' && s.view.stato === 'vivo') { rushP(s.view, s); }
+  if (s.game === 'stop' && s.view.phase === 'conta') crono(s.view);
 }
 
 function set(html) { if (html !== lastHtml) { $('#main').innerHTML = html; lastHtml = html; } }
@@ -191,6 +211,7 @@ function lobbyV(s) {
   return `<button class="pickme" data-skin="1"><span class="hero">${s.ch}</span></button>
     <div class="mid">Sei dentro, ${esc(s.name)}.<br>Tocca il personaggio per cambiarlo.</div>
     <div class="mid" style="font-size:16px">Poi aspetta il via dallo schermo.</div>
+    ${s.nplus ? `<a class="nplus" href="${esc(s.nplus)}" target="_blank" rel="noopener">🕹️ Apri N+ Arena Stickman</a>` : ''}
     ${s.top.length ? `<ol style="margin-top:20px">${s.top.map((p) => `<li><span>${p.rank}</span>${p.ch} ${esc(p.name)}<b>${p.score}</b></li>`).join('')}</ol>` : ''}`;
 }
 
@@ -417,6 +438,79 @@ function rushP(v, s) {
 function muoviCesto() {
   const c = $('#cesto');
   if (c) c.style.left = corsiaX(rushLane) + '%';
+}
+
+// ---------- stop: il cronometro sparisce dopo 3 secondi, si conta a mente
+const secondi = (ms) => (ms / 1000).toFixed(2);
+let cronoT0 = 0, cronoShow = 0, cronoRaf = 0;
+
+function stopV(v, s) {
+  if (v.phase === 'via')
+    return `<div class="hero">⏱️</div><div class="mid">Il cronometro parte e dopo 3 secondi <b>sparisce</b>.<br>
+      Tocca STOP quando pensi sia arrivato al secondo giusto.</div>`;
+  if (v.phase === 'fine') return fineV(s);
+  if (v.phase === 'esito') {
+    if (v.ms == null) return `<div class="pad res">Non hai fermato ⏳<br>Obiettivo ${v.target / 1000} s</div>`;
+    const d = Math.abs(v.diff);
+    return `<div class="pad res" style="flex-direction:column">
+      <div>${d <= 50 ? '🎯 PERFETTO!' : secondi(v.ms) + ' s'}</div>
+      <div style="font-size:20px;opacity:.8;margin-top:8px">obiettivo ${v.target / 1000} s · ${d <= 50 ? '' : (v.diff > 0 ? 'tardi di ' : 'presto di ') + secondi(d) + ' s · '}+${v.pts}</div></div>`;
+  }
+  if (v.fermo) return `<div class="pad res">✋ Fermato!<br><span style="font-size:.55em">Il tempo lo scopri a fine round</span></div>`;
+  return `<button class="pad go" data-tap="1" style="flex-direction:column">
+    <div style="font-size:22px">Ferma a ${v.target / 1000} secondi</div>
+    <div id="crono" style="font-size:64px;font-variant-numeric:tabular-nums">0.00</div>
+    <div>STOP ✋</div></button>`;
+}
+function crono(v) {
+  cronoT0 = performance.now() - v.el;
+  cronoShow = v.show;
+  if (!cronoRaf) cronoRaf = requestAnimationFrame(giraCrono);
+}
+function giraCrono() {
+  const el = $('#crono');
+  if (!el) { cronoRaf = 0; return; }
+  const t = performance.now() - cronoT0;
+  el.textContent = t < cronoShow ? secondi(t) : '🙈';
+  cronoRaf = requestAnimationFrame(giraCrono);
+}
+
+// ---------- colori: la parola ROSSO scritta in blu
+function coloriV(v, s) {
+  if (v.phase === 'via')
+    return `<div class="hero">🎨</div><div class="mid">Compare una parola colorata.<br>
+      Leggi cosa chiede: <b>il COLORE</b> dell'inchiostro<br>oppure <b>la PAROLA</b> scritta.<br><br>Più sei veloce, più punti.</div>`;
+  if (v.phase === 'fine') return fineV(s);
+  const cosa = v.chiedi === 'colore' ? 'il <b>COLORE</b>' : 'la <b>PAROLA</b>';
+  const esito = v.phase === 'stacco'
+    ? `<div class="mid">${v.ok ? '✅ Giusto!' : v.ok === false ? '❌ Sbagliato' : '⏳ Troppo lento'}</div>` : '';
+  return `<div class="mid">${v.n}/${v.tot} · tocca ${cosa}</div>
+    <div class="stroop ink${v.ink}">${v.parola}</div>${esito}
+    <div class="sws">${[0, 1, 2, 3].map((i) => `<button class="bg${i} ${v.pick != null && v.pick !== i ? 'dim' : ''} ${v.pick === i ? 'win' : ''}"
+      data-pick="${i}" ${v.pick != null || v.phase !== 'domanda' ? 'disabled' : ''} aria-label="${['rosso', 'blu', 'giallo', 'verde'][i]}"></button>`).join('')}</div>`;
+}
+
+// ---------- come la sala: indovina la maggioranza
+function salaV(v, s) {
+  if (v.phase === 'via')
+    return `<div class="hero">🤝</div><div class="mid">Non conta cosa preferisci tu.<br>
+      Vince chi indovina cosa sceglie <b>la maggioranza</b>.</div>`;
+  if (v.phase === 'fine') return fineV(s);
+  if (v.phase === 'esito') {
+    const tot = v.conta[0] + v.conta[1];
+    const pct = tot ? Math.round((v.conta[0] / tot) * 100) : 50;
+    const mio = v.pick == null ? '⏳ Non hai votato' : v.vince.includes(v.pick)
+      ? (v.vince.length === 2 ? '🤝 Pareggio: mezzo premio' : '✅ Eri con la sala!') : '❌ Controcorrente';
+    return `<div class="big">${mio}</div>
+      <div class="split"><div class="bg0" style="width:${pct}%">${pct}%</div><div class="bg1" style="width:${100 - pct}%">${100 - pct}%</div></div>
+      <div style="display:flex;justify-content:space-between" class="mid"><span>${esc(v.o[0])}</span><span>${esc(v.o[1])}</span></div>`;
+  }
+  return `<div class="mid">${v.n}/${v.tot} · ${v.left}s</div>
+    <p class="q">Cosa sceglie la sala?</p>
+    <div class="opts">${v.o.map((o, i) => `
+      <button class="opt o${i} ${v.pick != null && v.pick !== i ? 'dim' : ''}" style="justify-content:center;font-size:26px;min-height:120px"
+        data-pick="${i}" ${v.pick != null ? 'disabled' : ''}>${esc(o)}</button>`).join('')}</div>
+    ${v.pick != null ? '<div class="mid">Voto inviato ✔</div>' : ''}`;
 }
 
 // un solo listener: i bottoni vengono ridisegnati a ogni cambio di fase

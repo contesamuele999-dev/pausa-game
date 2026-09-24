@@ -1,7 +1,7 @@
 # Pausa Game
 
 Giochi multiplayer da telefono per le pause delle conferenze. Il pubblico inquadra un QR,
-entra e gioca insieme. Sei meccaniche, una classifica per partita, premi ai primi.
+entra e gioca insieme. Nove meccaniche, una classifica per partita, premi ai primi.
 
 ## Come si usa in sala
 
@@ -12,7 +12,7 @@ entra e gioca insieme. Sei meccaniche, una classifica per partita, premi ai prim
 
 Il refresh della pagina host non perde la stanza. Chi blocca il telefono rientra e ritrova i suoi punti.
 
-## I sei giochi
+## I nove giochi
 
 | Gioco | Per chi | Come funziona | Durata |
 |---|---|---|---|
@@ -22,6 +22,9 @@ Il refresh della pagina host non perde la stanza. Chi blocca il telefono rientra
 | **Corsa** 🏎️ | dai 6 anni in su | Kart. Si avanza alternando i due pedali, sinistra-destra-sinistra. Martellare sempre lo stesso non porta da nessuna parte. Pedana turbo ogni 25 metri, podio ai primi tre al traguardo. | ~1 min |
 | **Salta** 🦘 | tutti | 34 ostacoli a tempo: 🌵 a terra si salta, 🦅 in alto si resta giu'. Tre vite a testa. Ritmo serrato, da 2s a 1s fra un ostacolo e l'altro. | ~40s |
 | **Raccogli** 🧺 | dagli 8 anni in su | Cade qualcosa su **tutte e tre** le corsie: sposti il cestino per prendere 🟢 10, 📝 25 e 💎 50 punti e scappare dai 🐛. Restare fermi non e' mai sicuro. Combo fino a x5, tre bug e sei fuori. | ~25s |
+| **Stop** ⏱️ | tutti | 5 round. "Ferma a 7 secondi": il cronometro si vede per 3 secondi, poi sparisce e si conta a mente. Piu' vicino = piu' punti, entro 5 centesimi e' 🎯 PERFETTO (+200). Il tuo tempo lo scopri solo a round chiuso. | ~1 min |
+| **Colori** 🎨 | dagli 8 anni in su | 10 round. La parola ROSSO scritta in blu: il round chiede di toccare il **colore** dell'inchiostro o la **parola**. Quattro quadrati colorati, vince la velocita'. Si accorcia da 4s a 2,2s. Non adatto a chi non distingue i colori. | ~50s |
+| **Come la sala** 🤝 | tutti, ottimo per rompere il ghiaccio | 6 dilemmi (🍕 Pizza o 🍣 Sushi?). Non vince la tua preferenza: vince chi indovina cosa sceglie la maggioranza. 500 punti a chi e' con la sala, 250 in caso di pareggio. Lo schermo mostra come si e' divisa. | ~1,5 min |
 
 ### I personaggi
 
@@ -62,11 +65,18 @@ progetto a se': platformer da tastiera, multiplayer PeerJS per 2-4 giocatori, no
 una stanza da cento telefoni. Sta li' per farlo giocare a due o tre volontari sul palco
 mentre la sala guarda, non come minigioco della pausa.
 
+Sotto il link c'e' **Manda il link di N+ ai telefoni**: accende un bottone "Apri N+ Arena Stickman"
+nella sala d'attesa di tutti i telefoni. Ritoccandolo si ritira. L'indirizzo e' fisso in `NPLUS_URL`
+in cima a `server.js`: l'host lo accende e spegne, non puo' mandare alla sala un link qualsiasi.
+
 ## Le domande
 
 Stanno in [`questions.json`](questions.json), tre liste: `bambini`, `ragazzi`, `adulti`.
 Formato: `{ "q": "domanda", "o": ["a","b","c","d"], "c": 1 }` dove `c` è l'indice della risposta giusta (0-3).
-Ne servono almeno 8 per livello, il gioco ne pesca 8 a caso. **Sostituiscile con le tue**:
+Ne servono almeno 8 per livello, il gioco ne pesca 8 a caso.
+
+Nello stesso file c'e' `dilemmi`, le coppie di **Come la sala**: `["🍕 Pizza", "🍣 Sushi"]`.
+Ne servono almeno 6, il gioco ne pesca 6 a caso. Aggiungine di tuoi, anche a tema con l'evento. **Sostituiscile con le tue**:
 quelle attuali sono sui meccanismi di memoria e apprendimento, a tema con le pause, ma generiche.
 
 ## Locale (Windows, doppio click)
@@ -150,8 +160,8 @@ Un redirect/proxy Netlify **non** va bene: non inoltra l'upgrade WebSocket.
 ## File
 
 ```
-server.js        server + le sei meccaniche di gioco
-questions.json   le domande del quiz, per fascia d'età
+server.js        server + le nove meccaniche di gioco
+questions.json   le domande del quiz, per fascia d'età, e i dilemmi di Come la sala
 public/host.html schermo grande (proiettore)
 public/play.html telefono
 test.js          check della logica di punteggio e dei round

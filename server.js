@@ -14,6 +14,10 @@ const ALPHABET = 'ACDEFGHJKLMNPQRSTUVWXYZ2345679'; // niente 0/O/1/I/B/8: si leg
 // su qualsiasi telefono e restano nitide proiettate.
 const PERSONAGGI = ['🦊','🐼','🐸','🐵','🐙','🦄','🐯','🐨','🦁','🐧','🐢','🦖','🐝','🦉','🐬','🦩','🐳','🦔','🐰','🐻'];
 
+// Il gioco da palco che l'host puo' girare ai telefoni. Fisso qui: l'host accende e
+// spegne il link, non sceglie l'indirizzo, cosi' nessuno manda link strani alla sala.
+const NPLUS_URL = 'https://contesamuele999-dev.github.io/n-arena-stickman/';
+
 const rooms = new Map();
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
@@ -761,6 +765,240 @@ GAMES.rush = {
   }
 };
 
+// --- Stop: il cronometro parte, dopo 3 secondi sparisce. Bisogna fermarlo al secondo
+//     giusto contando a mente. Chi ci arriva piu' vicino prende di piu'.
+GAMES.stop = {
+  label: 'Stop',
+  live: [], // il cronometro lo fa girare il browser, il server manda solo quanto e' passato
+  TOT: 5,
+  SHOW: 3000, // per quanto si vede il cronometro prima di sparire
+
+  punti(diff) {
+    const d = Math.abs(diff);
+    return clamp(600 - Math.round(d / 4), 0, 600) + (d <= 50 ? 200 : 0); // +200 al colpo perfetto
+  },
+
+  start(room) {
+    room.level = null;
+    room.g = { round: 0, tot: this.TOT, phase: 'via', until: Date.now() + 3000, t0: 0, target: 0, stop: new Map() };
+    resetScores(room);
+  },
+
+  tick(room, now) {
+    const g = room.g;
+    if (g.phase === 'fine') return false;
+    if (g.phase === 'conta' && room.players.size > 0 && g.stop.size >= room.players.size) g.until = now;
+    if (now < g.until) return false;
+
+    if (g.phase === 'conta') {
+      for (const [pid, ms] of g.stop) {
+        const p = room.players.get(pid);
+        if (p) p.score += this.punti(ms - g.target);
+      }
+      g.phase = 'esito';
+      g.until = now + 4500;
+      return true;
+    }
+    if (g.phase === 'esito' && ++g.round >= g.tot) {
+      g.phase = 'fine';
+      return true;
+    }
+    g.target = (5 + ((Math.random() * 6) | 0)) * 1000; // da 5 a 10 secondi tondi
+    g.stop = new Map();
+    g.t0 = now;
+    g.phase = 'conta';
+    g.until = now + g.target + 4000;
+    return true;
+  },
+
+  input(room, p, m) {
+    const g = room.g;
+    if (m.tap !== 1 || g.phase !== 'conta' || g.stop.has(p.pid)) return false;
+    g.stop.set(p.pid, Date.now() - g.t0);
+    return true;
+  },
+
+  hostView(room, now) {
+    const g = room.g;
+    const v = { phase: g.phase, n: g.round + 1, tot: g.tot, target: g.target, el: now - g.t0, show: this.SHOW,
+      fermi: g.stop.size, players: room.players.size };
+    if (g.phase === 'esito') {
+      v.top = [...g.stop]
+        .map(([pid, ms]) => ({ name: room.players.get(pid) ? room.players.get(pid).name : '?', ms, diff: ms - g.target }))
+        .sort((a, b) => Math.abs(a.diff) - Math.abs(b.diff))
+        .slice(0, 8);
+    }
+    return v;
+  },
+
+  playerView(room, p, now) {
+    const g = room.g;
+    const ms = g.stop.get(p.pid);
+    const v = { phase: g.phase, n: g.round + 1, tot: g.tot, target: g.target, el: now - g.t0, show: this.SHOW,
+      fermo: ms != null ? 1 : 0 };
+    // il tempo fatto si svela solo a round chiuso: nessun indizio durante il conteggio
+    if (g.phase === 'esito') Object.assign(v, { ms: ms == null ? null : ms, diff: ms == null ? null : ms - g.target,
+      pts: ms == null ? 0 : this.punti(ms - g.target) });
+    return v;
+  }
+};
+
+// --- Colori: la parola ROSSO scritta in blu. Si tocca il colore dell'inchiostro, o la
+//     parola, a seconda di cosa chiede il round. Il cervello si inceppa, la sala ride.
+GAMES.colori = {
+  label: 'Colori',
+  live: [],
+  TOT: 10,
+  NOMI: ['ROSSO', 'BLU', 'GIALLO', 'VERDE'], // stesso ordine dei colori --a --b --c --d
+
+  dur(i) {
+    return Math.max(2200, 4000 - i * 200);
+  },
+
+  start(room) {
+    room.level = null;
+    room.g = { i: -1, tot: this.TOT, phase: 'via', until: Date.now() + 3000, t0: 0, parola: 0, ink: 0, chiedi: 'colore', ans: new Map() };
+    resetScores(room);
+  },
+
+  giusta(g) {
+    return g.chiedi === 'colore' ? g.ink : g.parola;
+  },
+
+  tick(room, now) {
+    const g = room.g;
+    if (g.phase === 'fine') return false;
+    if (g.phase === 'domanda' && room.players.size > 0 && g.ans.size >= room.players.size) g.until = now;
+    if (now < g.until) return false;
+
+    if (g.phase === 'domanda') {
+      const ok = this.giusta(g);
+      const dur = this.dur(g.i);
+      for (const [pid, a] of g.ans) {
+        const p = room.players.get(pid);
+        if (p && a.pick === ok) p.score += 300 + Math.round(300 * (1 - clamp((a.at - g.t0) / dur, 0, 1)));
+      }
+      g.phase = 'stacco';
+      g.until = now + 1500;
+      return true;
+    }
+
+    if (++g.i >= g.tot) {
+      g.phase = 'fine';
+      return true;
+    }
+    g.parola = (Math.random() * 4) | 0;
+    g.ink = (g.parola + 1 + ((Math.random() * 3) | 0)) % 4; // mai lo stesso colore della parola
+    g.chiedi = g.i < 3 || Math.random() < 0.6 ? 'colore' : 'parola'; // i primi tre per imparare
+    g.ans = new Map();
+    g.t0 = now;
+    g.phase = 'domanda';
+    g.until = now + this.dur(g.i);
+    return true;
+  },
+
+  input(room, p, m) {
+    const g = room.g;
+    if (g.phase !== 'domanda' || g.ans.has(p.pid)) return false;
+    if (!Number.isInteger(m.pick) || m.pick < 0 || m.pick > 3) return false;
+    g.ans.set(p.pid, { pick: m.pick, at: Date.now() });
+    return true;
+  },
+
+  _vista(g, now) {
+    return { phase: g.phase, n: g.i + 1, tot: g.tot, parola: this.NOMI[g.parola], ink: g.ink, chiedi: g.chiedi,
+      into: Math.max(0, g.until - now), gap: this.dur(Math.max(0, g.i)) };
+  },
+
+  hostView(room, now) {
+    const g = room.g;
+    const v = Object.assign(this._vista(g, now), { answered: g.ans.size, players: room.players.size });
+    if (g.phase === 'stacco') {
+      v.giusta = this.giusta(g);
+      v.bravi = [...g.ans.values()].filter((a) => a.pick === v.giusta).length;
+    }
+    return v;
+  },
+
+  playerView(room, p, now) {
+    const g = room.g;
+    const a = g.ans.get(p.pid);
+    const v = Object.assign(this._vista(g, now), { pick: a ? a.pick : null });
+    if (g.phase === 'stacco') v.ok = a ? a.pick === this.giusta(g) : null;
+    return v;
+  }
+};
+
+// --- Come la sala: pizza o sushi? Non conta cosa preferisci tu, conta indovinare cosa
+//     sceglie la maggioranza. Si vota, poi lo schermo mostra come si e' divisa la sala.
+GAMES.sala = {
+  label: 'Come la sala',
+  live: ['voto'],
+  TOT: 6,
+  DUR: 10000,
+
+  start(room) {
+    room.level = null;
+    room.g = { i: -1, qs: shuffle(QUESTIONS.dilemmi.slice()).slice(0, this.TOT), phase: 'via', until: Date.now() + 3000,
+      voti: new Map(), conta: [0, 0], vince: [] };
+    resetScores(room);
+  },
+
+  tick(room, now) {
+    const g = room.g;
+    if (g.phase === 'fine') return false;
+    if (g.phase === 'voto' && room.players.size > 0 && g.voti.size >= room.players.size) g.until = now;
+    if (now < g.until) return false;
+
+    if (g.phase === 'voto') {
+      g.conta = [0, 1].map((k) => [...g.voti.values()].filter((x) => x === k).length);
+      const max = Math.max(...g.conta);
+      g.vince = max ? [0, 1].filter((k) => g.conta[k] === max) : [];
+      const premio = g.vince.length === 2 ? 250 : 500; // pareggio: mezzo premio a tutti
+      for (const [pid, k] of g.voti) {
+        const p = room.players.get(pid);
+        if (p && g.vince.includes(k)) p.score += premio;
+      }
+      g.phase = 'esito';
+      g.until = now + 5000;
+      return true;
+    }
+
+    if (++g.i >= g.qs.length) {
+      g.phase = 'fine';
+      return true;
+    }
+    g.voti = new Map();
+    g.phase = 'voto';
+    g.until = now + this.DUR;
+    return true;
+  },
+
+  input(room, p, m) {
+    const g = room.g;
+    if (g.phase !== 'voto' || g.voti.has(p.pid)) return false;
+    if (m.pick !== 0 && m.pick !== 1) return false;
+    g.voti.set(p.pid, m.pick);
+    return true;
+  },
+
+  _vista(g, now) {
+    const v = { phase: g.phase, n: g.i + 1, tot: g.qs.length, left: Math.max(0, Math.ceil((g.until - now) / 1000)) };
+    if (g.phase === 'voto' || g.phase === 'esito') v.o = g.qs[g.i];
+    if (g.phase === 'esito') Object.assign(v, { conta: g.conta, vince: g.vince });
+    return v;
+  },
+
+  hostView(room, now) {
+    return Object.assign(this._vista(room.g, now), { votati: room.g.voti.size, players: room.players.size });
+  },
+
+  playerView(room, p, now) {
+    const k = room.g.voti.get(p.pid);
+    return Object.assign(this._vista(room.g, now), { pick: k == null ? null : k });
+  }
+};
+
 // ---------------------------------------------------------------- stato
 
 function hostState(room, now) {
@@ -772,6 +1010,7 @@ function hostState(room, now) {
     game: room.game,
     gameLabel: room.game ? GAMES[room.game].label : null,
     level: room.level,
+    nplus: room.nplus ? 1 : 0,
     players: standings(room),
     view: room.game ? GAMES[room.game].hostView(room, now) : null
   };
@@ -791,6 +1030,7 @@ function playerState(room, p, now) {
     game: room.game,
     gameLabel: room.game ? GAMES[room.game].label : null,
     top: all.slice(0, 5),
+    nplus: room.nplus ? NPLUS_URL : null,
     view: room.game ? GAMES[room.game].playerView(room, p, now) : null
   };
 }
@@ -914,6 +1154,10 @@ wss.on('connection', (ws, req) => {
       }
       if (m.t === 'next' && room.game && GAMES[room.game].hostInput) {
         if (GAMES[room.game].hostInput(room, m)) room.dirty = true;
+      }
+      if (m.t === 'nplus') {
+        room.nplus = !room.nplus;
+        room.dirty = true;
       }
       if (m.t === 'kick') {
         room.players.delete(m.pid);

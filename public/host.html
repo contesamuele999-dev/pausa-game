@@ -79,6 +79,18 @@
                  transform:translateX(-50%);will-change:top;line-height:1}
   .pistaH .suoloH{position:absolute;left:0;right:0;bottom:12%;height:4px;background:rgba(255,255,255,.25)}
 
+  /* colori: la parola in un inchiostro che non e' il suo */
+  .stroop{font-size:clamp(60px,11vw,180px);font-weight:900;text-align:center;line-height:1;letter-spacing:.02em}
+  .sw{display:inline-block;width:1.1em;height:1.1em;border-radius:.25em;vertical-align:-.15em}
+  .ink0{color:var(--a)} .ink1{color:var(--b)} .ink2{color:var(--c)} .ink3{color:var(--d)}
+  .bg0{background:var(--a)} .bg1{background:var(--b)} .bg2{background:var(--c)} .bg3{background:var(--d)}
+
+  /* come la sala: la sala divisa in due */
+  .split{display:flex;height:16vh;border-radius:20px;overflow:hidden;border:1px solid var(--line)}
+  .split div{display:flex;align-items:center;justify-content:center;font-size:clamp(18px,2.4vw,40px);font-weight:800;
+             min-width:0;white-space:nowrap;overflow:hidden;transition:width .6s ease-out}
+  .split .dim{opacity:.35}
+
   ol.board{list-style:none;margin:0;padding:0;overflow:auto}
   ol.board li{display:flex;align-items:center;gap:1rem;padding:.7vh .4rem;font-size:clamp(15px,1.5vw,26px);border-bottom:1px solid var(--line)}
   ol.board li span{color:var(--dim);min-width:2.2em}
@@ -109,6 +121,7 @@
         <div class="url" id="lurl"></div>
         <a class="extra" href="https://contesamuele999-dev.github.io/n-arena-stickman/" target="_blank" rel="noopener">
           🕹️ N+ Arena Stickman &mdash; gioco a parte, per 2-4 volontari sul palco</a>
+        <button id="bnplus" style="margin-top:1vh">📲 Manda il link di N+ ai telefoni</button>
       </div>
     </section>
 
@@ -134,6 +147,9 @@
           <button data-g="corsa">Corsa 🏎️</button>
           <button data-g="salto">Salta 🦘</button>
           <button data-g="rush">Raccogli 🧺</button>
+          <button data-g="stop">Stop ⏱️</button>
+          <button data-g="colori">Colori 🎨</button>
+          <button data-g="sala">Come la sala 🤝</button>
           <button class="go hide" id="bnext" style="grid-column:span 2">Avanti</button>
           <button class="stop hide" id="bstop">Termina</button>
         </div>
@@ -166,6 +182,8 @@ function render(s) {
   $('#lcode').textContent = s.code;
   if (s.qr && $('#lqr').src !== s.qr) $('#lqr').src = s.qr;
   $('#lurl').textContent = s.url;
+  $('#bnplus').textContent = s.nplus ? '✅ Link di N+ sui telefoni · tocca per ritirarlo' : '📲 Manda il link di N+ ai telefoni';
+  $('#bnplus').classList.toggle('go', !!s.nplus);
 
   const playing = !!s.game;
   $('#lobby').classList.toggle('hide', playing);
@@ -184,6 +202,8 @@ function render(s) {
   $('#stagebox').innerHTML = VIEWS[s.game](s.view, s);
   if (s.game === 'salto' && s.view.phase === 'corsa') animaTimer(s.view);
   if (s.game === 'rush' && s.view.phase === 'gioco') animaCaduta(s.view);
+  if (s.game === 'colori' && s.view.phase === 'domanda') animaTimer(s.view);
+  if (s.game === 'stop' && s.view.phase === 'conta') crono(s.view);
 
   // le fasi che avanzano solo su decisione dell'host espongono un'etichetta
   const lab = s.view && s.view.nextLabel;
@@ -290,7 +310,78 @@ function animaCaduta(v) {
   }
 }
 
-const VIEWS = { quiz: quizView, riflessi: riflessiView, insieme: insiemeView, corsa: corsaView, salto: saltoView, rush: rushView };
+const secondi = (ms) => (ms / 1000).toFixed(2);
+const segno = (ms) => (ms > 0 ? '+' : ms < 0 ? '−' : '±') + secondi(Math.abs(ms));
+
+function stopView(v, s) {
+  if (v.phase === 'via')
+    return `<div class="big">⏱️</div><div class="sub">Il cronometro parte e dopo 3 secondi sparisce.<br>
+      Fermalo al secondo giusto contando a mente.</div>`;
+  if (v.phase === 'fine') return podio(s);
+  if (v.phase === 'esito')
+    return `<div class="sub">Round ${v.n}/${v.tot} · obiettivo</div><div class="big">${secondi(v.target)} s</div>
+      <ol class="board" style="margin-top:2vh">${v.top.map((t, i) => `<li><span>${i + 1}</span>${esc(t.name)}
+        <b>${secondi(t.ms)} s &nbsp;<small style="opacity:.7">${Math.abs(t.diff) <= 50 ? '🎯 PERFETTO' : segno(t.diff)}</small></b></li>`).join('')}</ol>`;
+  return `<div class="sub">Round ${v.n}/${v.tot} · ${v.fermi} fermati su ${v.players}</div>
+    <div class="big" style="font-size:clamp(28px,4vw,64px)">Ferma a ${v.target / 1000} secondi</div>
+    <div class="big" id="crono" style="font-variant-numeric:tabular-nums">0.00</div>`;
+}
+
+// Il cronometro gira nel browser: il server dice solo quanto e' gia' passato.
+// Dopo `show` millisecondi sparisce, da li' si conta a mente.
+let cronoT0 = 0, cronoShow = 0, cronoRaf = 0;
+function crono(v) {
+  cronoT0 = performance.now() - v.el;
+  cronoShow = v.show;
+  if (!cronoRaf) cronoRaf = requestAnimationFrame(giraCrono);
+}
+function giraCrono() {
+  const el = $('#crono');
+  if (!el) { cronoRaf = 0; return; }
+  const t = performance.now() - cronoT0;
+  el.textContent = t < cronoShow ? secondi(t) : '🙈';
+  cronoRaf = requestAnimationFrame(giraCrono);
+}
+
+function coloriView(v, s) {
+  if (v.phase === 'via')
+    return `<div class="big">🎨</div><div class="sub">Compare una parola colorata. Leggete cosa chiede:<br>
+      <b>il COLORE</b> dell'inchiostro, oppure <b>la PAROLA</b> scritta.<br>Tocca il quadrato giusto, il più veloce possibile.</div>`;
+  if (v.phase === 'fine') return podio(s);
+  const cosa = v.chiedi === 'colore' ? 'il COLORE' : 'la PAROLA';
+  if (v.phase === 'stacco')
+    return `<div class="sub">${v.n}/${v.tot} · ${v.bravi} giuste su ${v.players}</div>
+      <div class="stroop ink${v.ink}">${v.parola}</div>
+      <div class="big" style="font-size:clamp(28px,4vw,64px)">Era ${cosa}: <span class="sw bg${v.giusta}"></span></div>`;
+  return `<div class="sub">${v.n}/${v.tot} · ${v.answered} risposte su ${v.players}</div>
+    <div class="big" style="font-size:clamp(28px,4vw,64px)">Tocca ${cosa}</div>
+    <div class="stroop ink${v.ink}">${v.parola}</div>
+    <div class="run" style="flex:0"><div class="timer"><div id="tfill"></div></div></div>`;
+}
+
+function salaView(v, s) {
+  if (v.phase === 'via')
+    return `<div class="big">🤝</div><div class="sub">Non conta cosa preferisci tu.<br>
+      Vince chi indovina cosa sceglie <b>la maggioranza</b> della sala.</div>`;
+  if (v.phase === 'fine') return podio(s);
+  if (v.phase === 'esito') {
+    const tot = v.conta[0] + v.conta[1];
+    const pct = tot ? Math.round((v.conta[0] / tot) * 100) : 50;
+    return `<div class="sub">${v.n}/${v.tot} · ${tot} voti</div>
+      <div class="big" style="font-size:clamp(28px,4vw,64px)">${v.vince.length === 2 ? 'Pareggio! Mezzo premio a tutti' :
+        v.vince.length ? 'La sala sceglie ' + esc(v.o[v.vince[0]]) : 'Nessun voto'}</div>
+      <div class="split" style="margin-top:3vh">
+        <div class="opt o0 ${v.vince.includes(0) ? '' : 'dim'}" style="width:${pct}%">${pct}%</div>
+        <div class="opt o1 ${v.vince.includes(1) ? '' : 'dim'}" style="width:${100 - pct}%">${100 - pct}%</div></div>
+      <div class="opts" style="margin-top:1vh"><div class="sub">${esc(v.o[0])}</div><div class="sub">${esc(v.o[1])}</div></div>`;
+  }
+  return `<div class="sub">${v.n}/${v.tot} · ${v.left}s · ${v.votati} voti su ${v.players}</div>
+    <p class="q">Cosa sceglie la sala?</p>
+    <div class="opts">${v.o.map((o, i) => `<div class="opt o${i}" style="justify-content:center;font-size:clamp(26px,3.4vw,60px)">${esc(o)}</div>`).join('')}</div>`;
+}
+
+const VIEWS = { quiz: quizView, riflessi: riflessiView, insieme: insiemeView, corsa: corsaView, salto: saltoView, rush: rushView,
+  stop: stopView, colori: coloriView, sala: salaView };
 
 function riflessiView(v, s) {
   if (v.phase === 'fine') return podio(s);
@@ -310,6 +401,8 @@ function insiemeView(v, s) {
     <div class="big">${v.pct}%</div>
     <div class="bar"><div style="width:${v.pct}%"></div></div>`;
 }
+
+$('#bnplus').onclick = () => ws.send(JSON.stringify({ t: 'nplus' }));
 
 $('#menu').addEventListener('click', (e) => {
   const b = e.target.closest('button');
