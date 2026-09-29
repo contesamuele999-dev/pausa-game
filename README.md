@@ -158,6 +158,8 @@ Un redirect/proxy Netlify **non** va bene: non inoltra l'upgrade WebSocket.
 - Testato fino a 300 giocatori per stanza (limite impostato in `server.js`).
 - Lo schermo del telefono resta acceso durante la partita (Wake Lock, dove il browser lo supporta).
 - Le stanze vivono in memoria: riavviare il server azzera tutto. Voluto — è roba da 5 minuti.
+- Un telefono si blocca? Guarda la finestra del server: gli errori dei telefoni compaiono lì
+  come `[telefono Nome, gioco] messaggio` (i primi 5 per persona).
 
 ## File
 

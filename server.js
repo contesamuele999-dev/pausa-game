@@ -1170,6 +1170,12 @@ wss.on('connection', (ws, req) => {
     if (ws.role === 'player') {
       const p = room.players.get(ws.pid);
       if (!p) return;
+      // errore JavaScript sul telefono: solo i primi 5 per giocatore, cosi' nessuno inonda il log
+      if (m.t === 'bug') {
+        p.bugs = (p.bugs || 0) + 1;
+        if (p.bugs <= 5) console.log(`[telefono ${p.name}, ${room.game || 'attesa'}] ${String(m.msg).slice(0, 200)}`);
+        return;
+      }
       // cambio personaggio: solo in sala d'attesa, cosi' nessuno ci gioca a partita in corso
       if (m.t === 'skin' && !room.game) {
         p.ch = PERSONAGGI[(PERSONAGGI.indexOf(p.ch) + 1) % PERSONAGGI.length];

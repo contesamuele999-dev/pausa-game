@@ -556,6 +556,12 @@ function colpo(freq) {
   } catch {} // telefono in silenzioso o audio negato: si gioca lo stesso
 }
 
+// Un errore sul telefono finisce nella finestra del server: in sala nessuno apre la console,
+// e senza questo un telefono bloccato non lascia traccia.
+window.addEventListener('error', (e) => {
+  try { if (ws.readyState === 1) ws.send(JSON.stringify({ t: 'bug', msg: String(e.message).slice(0, 200) })); } catch {}
+});
+
 // lo schermo del telefono non deve bloccarsi a meta' partita
 async function wake() { try { await navigator.wakeLock.request('screen'); } catch {} }
 document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && wake());
