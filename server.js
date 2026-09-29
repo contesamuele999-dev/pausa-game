@@ -1210,6 +1210,12 @@ setInterval(() => {
 
 if (require.main === module) {
   const port = process.env.PORT || 3000;
+  wss.on('error', (e) => { // ws rilancia qui gli errori di listen del server http
+    if (e.code !== 'EADDRINUSE') throw e;
+    console.error(`\n  La porta ${port} e' occupata: c'e' gia' un Pausa Game acceso, probabilmente una versione vecchia.`);
+    console.error(`  Chiudi la finestra "Pausa Game - server" e rilancia avvia.bat.\n`);
+    process.exit(1);
+  });
   server.listen(port, () => console.log(`Pausa Game su http://localhost:${port}  (schermo: /host)`));
 }
 

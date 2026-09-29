@@ -31,6 +31,10 @@ netsh advfirewall firewall show rule name="Pausa Game 3000" >nul 2>&1 || (
   pause
 )
 
+rem se il server di prima e' ancora aperto tiene la porta 3000 e il nuovo non parte:
+rem resterebbe acceso il codice vecchio con le pagine nuove, e i telefoni si bloccano
+taskkill /fi "WINDOWTITLE eq Pausa Game - server*" /t /f >nul 2>&1
+
 start "Pausa Game - server" cmd /k "npm start"
 timeout /t 4 >nul
 start "" "http://localhost:3000/host"

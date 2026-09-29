@@ -84,6 +84,8 @@ quelle attuali sono sui meccanismi di memoria e apprendimento, a tema con le pau
 - **`avvia.bat`** — installa le dipendenze la prima volta, trova l'IP del portatile sulla rete,
   avvia il server e apre lo schermo del proiettore. I telefoni sulla stessa wifi inquadrano il QR.
   Per fermare tutto: chiudi la finestra "Pausa Game - server".
+  Se quella finestra e' rimasta aperta da prima, `avvia.bat` la chiude da solo: altrimenti
+  resterebbe acceso il server vecchio con le pagine nuove, e i telefoni si bloccano.
 - **`firewall.bat`** — apre la porta 3000 verso la rete locale. Serve una volta sola, chiede conferma a Windows.
 - **`pusha.bat`** — salva su GitHub. Chiede il messaggio (invio = "aggiornamenti"), e se il
   repository non esiste ancora lo crea privato. Serve [GitHub CLI](https://cli.github.com) loggato.
