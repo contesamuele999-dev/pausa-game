@@ -1,7 +1,12 @@
 'use strict';
 // Check minimo della logica di gioco: node test.js
 const assert = require('assert');
+const os = require('os');
+const fs = require('fs');
+const path = require('path');
+process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'pausa-test-')); // niente scritture nel progetto
 const { GAMES, standings } = require('./server.js');
+const store = require('./store.js');
 
 function room(names) {
   const players = new Map();
@@ -20,10 +25,10 @@ function room(names) {
   assert.equal(r.g.phase, 'domanda');
 
   const q = r.g.qs[0];
-  assert.ok(GAMES.quiz.input(r, r.players.get('p0'), { pick: q.c }), 'risposta accettata');
+  assert.ok(GAMES.quiz.input(r, r.players.get('p0'), { pick: q.c[0] }), 'risposta accettata');
   assert.ok(!GAMES.quiz.input(r, r.players.get('p0'), { pick: 0 }), 'niente seconda risposta');
   assert.ok(!GAMES.quiz.input(r, r.players.get('p1'), { pick: 99 }), 'indice fuori range rifiutato');
-  GAMES.quiz.input(r, r.players.get('p1'), { pick: (q.c + 1) % q.o.length });
+  GAMES.quiz.input(r, r.players.get('p1'), { pick: (q.c[0] + 1) % q.o.length });
   // p2 non risponde
 
   GAMES.quiz.tick(r, r.g.until); // chiude la domanda e assegna i punti
@@ -45,7 +50,7 @@ function room(names) {
     rr.game = 'quiz';
     GAMES.quiz.start(rr, { level: 'adulti' });
     GAMES.quiz.tick(rr, rr.g.until);
-    rr.g.ans.set('p0', { pick: rr.g.qs[0].c, at: rr.g.t0 + delay });
+    rr.g.ans.set('p0', { picks: rr.g.qs[0].c, at: rr.g.t0 + delay });
     GAMES.quiz.tick(rr, rr.g.until);
   }
   assert.ok(fast.players.get('p0').score > slow.players.get('p0').score, 'piu veloce = piu punti');
@@ -67,12 +72,125 @@ function room(names) {
     assert.equal(end.g.phase, 'ripasso');
     const hv = GAMES.quiz.hostView(end, t);
     assert.equal(hv.n, k + 1, 'mostra la domanda giusta');
-    assert.equal(typeof hv.c, 'number', 'ora la soluzione c e');
+    assert.ok(Array.isArray(hv.c) && hv.c.length === 1, 'ora la soluzione c e');
     assert.equal(hv.counts.length, hv.o.length, 'con quante persone hanno scelto cosa');
   }
   GAMES.quiz.hostInput(end, { t: 'next' });
   assert.equal(end.g.phase, 'fine', 'l ultimo Avanti porta alla classifica');
   assert.equal(GAMES.quiz.tick(end, t + 999999), false, 'da fine non si muove piu');
+}
+
+// ---------------- quiz salvato dall'host: piu' risposte giuste e risposte aperte
+{
+  const { quiz, err } = store.cleanQuiz({
+    title: '  Prova  ',
+    qs: [
+      { type: 'scelta', q: 'Numeri pari?', o: ['2', '3', '4', '5'], c: [2, 0], t: 10 },
+      { type: 'aperta', q: 'Capitale d\'Italia?', a: ['Roma'], t: 20 },
+      { type: 'aperta', q: 'Colore preferito?', a: [], t: 999 }
+    ]
+  });
+  assert.ok(!err, err);
+  assert.equal(quiz.title, 'Prova');
+  assert.deepEqual(quiz.qs[0].c, [0, 2], 'risposte giuste ordinate');
+  assert.equal(quiz.qs[2].t, 20, 'tempo non previsto: torna a 20 secondi');
+
+  assert.ok(store.cleanQuiz({ title: 'x', qs: [] }).err, 'serve almeno una domanda');
+  assert.ok(store.cleanQuiz({ title: 'x', qs: [{ q: 'a', o: ['1', '2'], c: [] }] }).err, 'serve una giusta');
+  assert.ok(store.cleanQuiz({ title: 'x', qs: [{ q: 'a', o: ['1'], c: [0] }] }).err, 'servono almeno 2 risposte');
+  assert.ok(store.cleanQuiz({ title: 'x', qs: [{ q: 'a', o: ['1', ''], c: [0] }] }).err, 'niente risposte vuote');
+
+  const r = room(['Ada', 'Bruno', 'Cleo']);
+  r.game = 'quiz';
+  r.user = 'host';
+  GAMES.quiz.start(r, { quiz: Object.assign({ id: 'Q1' }, quiz) });
+  assert.equal(r.g.qs.length, 3, 'tutte le domande del quiz, nell ordine');
+  assert.equal(r.level, 'Prova');
+
+  // domanda 1: piu' risposte giuste, vale solo l'insieme esatto
+  GAMES.quiz.tick(r, r.g.until);
+  assert.equal(GAMES.quiz.hostView(r, Date.now()).multi, 1, 'lo schermo dice che le giuste sono piu di una');
+  assert.equal(GAMES.quiz.playerView(r, r.players.get('p0'), Date.now()).c, undefined, 'soluzione nascosta');
+  const [a, b, c] = ['p0', 'p1', 'p2'].map((k) => r.players.get(k));
+  assert.ok(!GAMES.quiz.input(r, a, { picks: [0, 0] }), 'niente doppioni');
+  assert.ok(!GAMES.quiz.input(r, a, { picks: [] }), 'almeno una scelta');
+  assert.ok(GAMES.quiz.input(r, a, { picks: [2, 0] }), 'insieme giusto');
+  assert.ok(GAMES.quiz.input(r, b, { picks: [0] }), 'insieme incompleto');
+  assert.ok(GAMES.quiz.input(r, c, { picks: [0, 1, 2] }), 'insieme con una di troppo');
+  GAMES.quiz.tick(r, r.g.until);
+  assert.ok(a.score >= 500, 'tutte e sole le giuste: punti');
+  assert.equal(b.score, 0, 'ne manca una: zero');
+  assert.equal(c.score, 0, 'una di troppo: zero');
+  assert.deepEqual(r.g.log[0].counts, [3, 1, 2, 0], 'conteggio per risposta');
+
+  // domanda 2: aperta, accenti maiuscole e punteggiatura non contano
+  GAMES.quiz.tick(r, r.g.until);
+  assert.equal(r.g.phase, 'domanda');
+  assert.equal(GAMES.quiz.hostView(r, Date.now()).type, 'aperta');
+  assert.ok(!GAMES.quiz.input(r, a, { text: '   ' }), 'risposta vuota rifiutata');
+  assert.ok(GAMES.quiz.input(r, a, { text: '  ROMA! ' }));
+  assert.ok(GAMES.quiz.input(r, b, { text: 'roma' }));
+  assert.ok(GAMES.quiz.input(r, c, { text: 'Milano' }));
+  const prima = b.score;
+  GAMES.quiz.tick(r, r.g.until);
+  assert.ok(b.score > prima, 'roma = Roma');
+  assert.equal(c.score, 0, 'Milano non e Roma');
+  assert.equal(r.g.log[1].groups[0].n, 2, 'ROMA! e roma finiscono nello stesso gruppo');
+
+  // domanda 3: aperta senza risposte accettate, e' un sondaggio
+  GAMES.quiz.tick(r, r.g.until);
+  GAMES.quiz.input(r, a, { text: 'Blu' });
+  const s0 = a.score;
+  GAMES.quiz.tick(r, r.g.until);
+  assert.equal(a.score, s0, 'il sondaggio non da punti');
+  GAMES.quiz.tick(r, r.g.until);
+  assert.equal(r.g.phase, 'ripasso');
+
+  // ripasso: la soluzione e cosa avevi risposto tu
+  GAMES.quiz.hostInput(r, { t: 'next' });
+  const pv = GAMES.quiz.playerView(r, b, Date.now());
+  assert.deepEqual(pv.c, [0, 2]);
+  assert.deepEqual(pv.picks, [0]);
+  assert.equal(pv.ok, false);
+  GAMES.quiz.hostInput(r, { t: 'next' });
+  assert.deepEqual(GAMES.quiz.hostView(r, Date.now()).a, ['Roma'], 'lo schermo mostra la risposta accettata');
+
+  // lo storico per le statistiche dell'host
+  const rep = GAMES.quiz.report(r);
+  assert.equal(rep.owner, 'host');
+  assert.equal(rep.quizId, 'Q1');
+  assert.equal(rep.partial, false);
+  assert.equal(rep.questions.length, 3);
+  assert.equal(rep.players.find((p) => p.name === 'Ada').ok, 2, 'Ada ne ha prese due su due');
+  assert.equal(rep.avg, 50, '3 giuste su 6 possibili: il sondaggio non conta');
+  assert.equal(rep.questions[1].answers.find((x) => x.name === 'Cleo').text, 'Milano');
+
+  const id = store.addResult(rep);
+  assert.equal(store.listResults('host', 'Q1').length, 1);
+  assert.equal(store.getResult('altro', id), null, 'i risultati sono solo di chi li ha fatti');
+}
+
+// ---------------- account e quiz salvati
+{
+  assert.ok(store.register('A', '123456').err, 'nome troppo corto');
+  assert.ok(store.register('anna', '123').err, 'password troppo corta');
+  assert.equal(store.register('anna', 'segreta1').user, 'anna');
+  assert.ok(store.register('ANNA', 'altra123').err, 'nome gia preso, maiuscole a parte');
+  assert.equal(store.checkLogin('Anna', 'segreta1'), 'anna');
+  assert.equal(store.checkLogin('anna', 'sbagliata'), null);
+  const tok = store.makeToken('anna');
+  assert.equal(store.readToken(tok), 'anna');
+  assert.equal(store.readToken(tok.slice(0, -2) + 'xx'), null, 'token alterato rifiutato');
+  assert.equal(store.userFromCookie('x=1; sid=' + encodeURIComponent(tok)), 'anna');
+
+  const { quiz } = store.saveQuiz('anna', null, { title: 'Mio', qs: [{ q: 'Si?', o: ['Si', 'No'], c: [0] }] });
+  assert.ok(quiz.id);
+  assert.equal(store.listQuizzes('anna').length, 1);
+  assert.equal(store.getQuiz('bruno', quiz.id), null, 'il quiz di un altro non si apre');
+  assert.ok(store.saveQuiz('bruno', quiz.id, { title: 'Rubato', qs: quiz.qs }).err, 'e nemmeno si modifica');
+  assert.equal(store.saveQuiz('anna', quiz.id, { title: 'Mio 2', qs: quiz.qs }).quiz.title, 'Mio 2');
+  assert.ok(!store.deleteQuiz('bruno', quiz.id));
+  assert.ok(store.deleteQuiz('anna', quiz.id));
 }
 
 // ---------------- riflessi

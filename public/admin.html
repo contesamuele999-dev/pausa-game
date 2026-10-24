@@ -1,0 +1,582 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pausa Game — I miei quiz</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.92em' font-size='92'>✏️</text></svg>">
+<style>
+  :root{
+    --bg:#0b1020; --card:#151c33; --line:#26304f; --fg:#eef2ff; --dim:#94a3c8;
+    --a:#ef4444; --b:#3b82f6; --c:#eab308; --d:#22c55e; --ok:#22c55e; --ko:#f87171;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
+  a{color:#93c5fd}
+  header{display:flex;align-items:center;gap:1rem;padding:14px 24px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+  header h1{margin:0;font-size:20px}
+  header .sp{flex:1}
+  header span{color:var(--dim)}
+  main{max-width:1180px;margin:0 auto;padding:24px 16px 80px}
+  h2{margin:0 0 14px;font-size:22px}
+  h3{margin:0 0 10px;font-size:17px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px}
+  .row{display:flex;gap:.6rem;align-items:center;flex-wrap:wrap}
+  .sp{flex:1}
+  .dim{color:var(--dim)}
+  .err{color:var(--ko);min-height:1.3em}
+  .ok{color:var(--ok)}
+  button,.btn{font:inherit;font-weight:650;background:#233056;color:var(--fg);border:1px solid var(--line);border-radius:10px;
+              padding:.55rem .9rem;cursor:pointer;text-decoration:none;display:inline-block;white-space:nowrap}
+  button:hover,.btn:hover{background:#2c3b6b}
+  button:disabled{opacity:.45;cursor:default}
+  button.go,.btn.go{background:var(--ok);border-color:var(--ok);color:#052e16}
+  button.danger{background:#3a2030;border-color:#5b2740;color:#fca5a5}
+  button.small{padding:.3rem .55rem;font-size:13px}
+  input,textarea,select{font:inherit;background:#0e1530;color:var(--fg);border:1px solid var(--line);border-radius:10px;padding:.6rem .7rem;width:100%}
+  textarea{resize:vertical}
+  label.chk{display:flex;gap:.5rem;align-items:center;cursor:pointer}
+  label.chk input{width:auto}
+
+  /* accesso */
+  .auth{max-width:380px;margin:8vh auto;display:flex;flex-direction:column;gap:12px}
+  .tabs{display:flex;gap:6px}
+  .tabs button{flex:1}
+  .tabs button.on{background:#3b4f8a}
+
+  /* elenco quiz */
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
+  .qcard h3{margin-bottom:4px}
+  .qcard .meta{color:var(--dim);font-size:13px;margin-bottom:12px}
+
+  /* editor */
+  .ed{display:grid;grid-template-columns:260px 1fr;gap:16px;align-items:start}
+  @media (max-width:780px){ .ed{grid-template-columns:1fr} }
+  .slides{display:flex;flex-direction:column;gap:8px;max-height:70vh;overflow:auto}
+  .slide{background:#0e1530;border:2px solid var(--line);border-radius:12px;padding:8px 10px;cursor:pointer;font-size:13px}
+  .slide.on{border-color:#60a5fa}
+  .slide b{display:block;color:var(--dim);font-size:12px}
+  .slide.bad{border-color:var(--ko)}
+  .optrow{display:flex;gap:8px;align-items:center;border-radius:12px;padding:8px}
+  .optrow i{font-style:normal;font-weight:800;width:1.6em;text-align:center}
+  .optrow input[type=text]{background:rgba(0,0,0,.25);border-color:transparent;color:inherit}
+  .o0{background:var(--a)} .o1{background:var(--b)} .o2{background:var(--c);color:#1a1400} .o3{background:var(--d);color:#052e16}
+  .giusta{background:rgba(0,0,0,.28);border:2px solid rgba(255,255,255,.4);color:inherit;min-width:6.5em}
+  .giusta.on{background:#fff;color:#052e16;border-color:#fff}
+  .types{display:flex;gap:6px;flex-wrap:wrap}
+  .types button.on{background:#3b4f8a;border-color:#60a5fa}
+  .field{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+  .field>span{color:var(--dim);font-size:13px}
+  .savebar{position:sticky;top:0;z-index:2;background:var(--bg);padding:10px 0;margin-bottom:6px}
+
+  /* risultati */
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--dim);font-weight:600}
+  th.n,td.n{text-align:right;font-variant-numeric:tabular-nums}
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px}
+  .kpi{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px}
+  .kpi b{display:block;font-size:28px}
+  .kpi span{color:var(--dim);font-size:13px}
+  .bar{display:flex;align-items:center;gap:8px;margin:5px 0}
+  .bar .lab{width:38%;min-width:8em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .bar .tr{flex:1;height:22px;background:#0e1530;border-radius:6px;overflow:hidden}
+  .bar .tr div{height:100%;border-radius:6px}
+  .bar .num{width:5.5em;text-align:right;font-variant-numeric:tabular-nums;color:var(--dim)}
+  .pill{display:inline-block;border-radius:999px;padding:.1rem .6rem;font-size:12px;background:#233056;color:var(--dim)}
+  .pill.ok{background:#14361f;color:#86efac}
+  .pill.ko{background:#3a1d22;color:#fca5a5}
+  .scroll{overflow:auto}
+  .tags{display:flex;flex-wrap:wrap;gap:6px}
+  .tag{background:#1e2745;border:1px solid var(--line);border-radius:999px;padding:.2rem .7rem}
+  .tag.ok{border-color:var(--ok);background:#14361f}
+  .stack{display:flex;flex-direction:column;gap:14px}
+  .hide{display:none!important}
+</style>
+</head>
+<body>
+<header id="top" class="hide">
+  <h1>✏️ I miei quiz</h1>
+  <a href="#/">Quiz</a>
+  <a href="#/r">Risultati</a>
+  <span class="sp"></span>
+  <a class="btn go" href="/host" target="_blank">📺 Apri lo schermo</a>
+  <span id="who"></span>
+  <button id="logout">Esci</button>
+</header>
+<main id="main"></main>
+
+<script>
+const $ = (s, el = document) => el.querySelector(s);
+const LET = ['A', 'B', 'C', 'D'];
+const TEMPI = [5, 10, 15, 20, 30, 45, 60, 90, 120];
+const esc = (s) => String(s == null ? '' : s).replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
+const data = (t) => new Date(t).toLocaleString('it-IT', { dateStyle: 'medium', timeStyle: 'short' });
+
+let me = null;
+
+async function api(method, url, body) {
+  const r = await fetch('/api' + url, {
+    method,
+    headers: body ? { 'Content-Type': 'application/json' } : {},
+    body: body ? JSON.stringify(body) : undefined
+  });
+  const j = await r.json().catch(() => ({}));
+  if (r.status === 401 && url !== '/login') { me = null; authV(); throw new Error(j.err || 'Devi accedere'); }
+  if (!r.ok) throw new Error(j.err || 'Errore ' + r.status);
+  return j;
+}
+
+// ---------------------------------------------------------------- accesso
+
+function authV(signup) {
+  $('#top').classList.add('hide');
+  let modo = 'login';
+  const draw = () => {
+    $('#main').innerHTML = `<form class="auth card" id="f">
+      <h2>Pausa Game</h2>
+      <p class="dim" style="margin:0">Accedi per creare i tuoi quiz, salvarli e vedere i risultati delle partite.
+        Chi gioca dal telefono non ha bisogno di account.</p>
+      ${signup ? `<div class="tabs"><button type="button" data-m="login" class="${modo === 'login' ? 'on' : ''}">Accedi</button>
+        <button type="button" data-m="register" class="${modo === 'register' ? 'on' : ''}">Crea account</button></div>` : ''}
+      <input id="u" placeholder="Nome utente" autocomplete="username" autocapitalize="none">
+      <input id="p" type="password" placeholder="Password${modo === 'register' ? ' (almeno 6 caratteri)' : ''}"
+        autocomplete="${modo === 'register' ? 'new-password' : 'current-password'}">
+      <button class="go">${modo === 'register' ? 'Crea account' : 'Accedi'}</button>
+      <div class="err" id="err"></div></form>`;
+    $('#main').querySelectorAll('[data-m]').forEach((b) => (b.onclick = () => { modo = b.dataset.m; draw(); }));
+    $('#u').focus();
+    $('#f').onsubmit = async (e) => {
+      e.preventDefault();
+      try {
+        const r = await api('POST', modo === 'register' ? '/register' : '/login', { user: $('#u').value, pass: $('#p').value });
+        me = r.user;
+        avvio();
+      } catch (err) {
+        $('#err').textContent = err.message;
+      }
+    };
+  };
+  draw();
+}
+
+$('#logout').onclick = async () => {
+  if (dirty && !confirm('Ci sono modifiche non salvate. Uscire lo stesso?')) return;
+  dirty = false;
+  await api('POST', '/logout');
+  location.hash = '';
+  init();
+};
+
+// ---------------------------------------------------------------- navigazione
+
+function route() {
+  if (!me) return;
+  const h = location.hash.replace(/^#\/?/, '');
+  const [sez, id] = h.split('/');
+  if (sez === 'q') return editorV(id);
+  if (sez === 'r' && id) return risultatoV(id);
+  if (sez === 'r') return risultatiV(new URLSearchParams(location.hash.split('?')[1] || '').get('quiz'));
+  return elencoV();
+}
+
+let dirty = false;
+window.addEventListener('hashchange', (e) => {
+  if (dirty && !confirm('Ci sono modifiche non salvate. Lasciare la pagina?')) {
+    history.replaceState(null, '', e.oldURL);
+    return;
+  }
+  dirty = false;
+  route();
+});
+window.addEventListener('beforeunload', (e) => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
+
+function avvio() {
+  $('#top').classList.remove('hide');
+  $('#who').textContent = '👤 ' + me;
+  route();
+}
+
+async function init() {
+  const r = await api('GET', '/me');
+  me = r.user;
+  me ? avvio() : authV(r.signup);
+}
+
+// ---------------------------------------------------------------- elenco quiz
+
+async function elencoV() {
+  $('#main').innerHTML = '<p class="dim">Carico…</p>';
+  const list = await api('GET', '/quizzes');
+  $('#main').innerHTML = `
+    <div class="row" style="margin-bottom:16px"><h2 style="margin:0">I miei quiz</h2><span class="sp"></span>
+      <label class="btn">⬆️ Importa<input type="file" id="imp" accept=".json,application/json" hidden></label>
+      <a class="btn go" href="#/q/nuovo">＋ Nuovo quiz</a></div>
+    ${list.length ? '' : `<div class="card"><h3>Ancora nessun quiz</h3><p class="dim">Crea il primo: domande a scelta multipla
+      (anche con più risposte giuste), vero o falso, risposte aperte. Poi lo lanci dallo schermo con <b>▶ Avvia</b>.</p>
+      <a class="btn go" href="#/q/nuovo">＋ Crea il primo quiz</a></div>`}
+    <div class="grid">${list.map((q) => `
+      <div class="card qcard">
+        <h3>${esc(q.title)}</h3>
+        <div class="meta">${q.n} domande · modificato ${data(q.updated)}<br>
+          ${q.plays ? `giocato ${q.plays} ${q.plays === 1 ? 'volta' : 'volte'}, l'ultima ${data(q.lastPlay)}` : 'mai giocato'}</div>
+        ${q.desc ? `<p class="dim" style="margin:0 0 12px">${esc(q.desc)}</p>` : ''}
+        <div class="row">
+          <a class="btn go" href="/host?quiz=${encodeURIComponent(q.id)}" target="_blank">▶ Gioca</a>
+          <a class="btn" href="#/q/${encodeURIComponent(q.id)}">✏️ Modifica</a>
+          <a class="btn" href="#/r?quiz=${encodeURIComponent(q.id)}">📊 Risultati</a>
+          <span class="sp"></span>
+          <button class="small" data-dup="${esc(q.id)}" title="Duplica">⧉</button>
+          <button class="small" data-exp="${esc(q.id)}" title="Esporta">⬇️</button>
+          <button class="small danger" data-del="${esc(q.id)}" title="Elimina">🗑</button>
+        </div>
+      </div>`).join('')}</div>`;
+
+  $('#main').querySelectorAll('[data-del]').forEach((b) => (b.onclick = async () => {
+    if (!confirm('Eliminare questo quiz? I risultati delle partite gia\' giocate restano.')) return;
+    await api('DELETE', '/quizzes/' + b.dataset.del);
+    elencoV();
+  }));
+  $('#main').querySelectorAll('[data-dup]').forEach((b) => (b.onclick = async () => {
+    const q = await api('GET', '/quizzes/' + b.dataset.dup);
+    await api('POST', '/quizzes', Object.assign({}, q, { title: (q.title + ' (copia)').slice(0, 80) }));
+    elencoV();
+  }));
+  $('#main').querySelectorAll('[data-exp]').forEach((b) => (b.onclick = async () => {
+    const q = await api('GET', '/quizzes/' + b.dataset.exp);
+    scarica(q.title + '.json', JSON.stringify({ title: q.title, desc: q.desc, shuffle: q.shuffle, qs: q.qs }, null, 1), 'application/json');
+  }));
+  $('#imp').onchange = async (e) => {
+    try {
+      const q = JSON.parse(await e.target.files[0].text());
+      await api('POST', '/quizzes', q);
+      elencoV();
+    } catch (err) {
+      alert('Importazione non riuscita: ' + err.message);
+    }
+  };
+}
+
+function scarica(nome, testo, tipo) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([testo], { type: tipo }));
+  a.download = nome.replace(/[\\/:*?"<>|]+/g, '_');
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+// ---------------------------------------------------------------- editor
+
+const nuovaDomanda = (type) => type === 'aperta' ? { type: 'aperta', q: '', a: [], t: 30 }
+  : type === 'vf' ? { type: 'scelta', q: '', o: ['Vero', 'Falso'], c: [0], t: 20 }
+  : { type: 'scelta', q: '', o: ['', '', '', ''], c: [0], t: 20 };
+
+let Q = null, sel = 0;
+
+async function editorV(id, resta) {
+  if (id === 'nuovo') {
+    Q = { title: '', desc: '', shuffle: false, qs: [nuovaDomanda('scelta')] };
+  } else {
+    $('#main').innerHTML = '<p class="dim">Carico…</p>';
+    Q = await api('GET', '/quizzes/' + id);
+  }
+  sel = resta && sel < Q.qs.length ? sel : 0;
+  dirty = false;
+  $('#main').innerHTML = `
+    <div class="savebar row">
+      <a href="#/">← Quiz</a><span class="sp"></span>
+      <span id="stato" class="dim"></span>
+      ${Q.id ? `<a class="btn" href="/host?quiz=${encodeURIComponent(Q.id)}" target="_blank">▶ Gioca</a>` : ''}
+      <button class="go" id="salva">💾 Salva</button>
+    </div>
+    <div class="err" id="err"></div>
+    <div class="card" style="margin-bottom:16px">
+      <div class="field"><span>Titolo del quiz</span><input id="title" maxlength="80" placeholder="Es. Quiz di benvenuto" value="${esc(Q.title)}"></div>
+      <div class="field"><span>Descrizione (solo per te)</span><input id="desc" maxlength="200" value="${esc(Q.desc)}"></div>
+      <label class="chk"><input type="checkbox" id="shuffle" ${Q.shuffle ? 'checked' : ''}> Domande in ordine casuale a ogni partita</label>
+    </div>
+    <div class="ed">
+      <div class="card">
+        <div class="slides" id="slides"></div>
+        <div class="stack" style="margin-top:12px;gap:6px">
+          <button data-add="scelta">＋ Scelta multipla</button>
+          <button data-add="vf">＋ Vero o falso</button>
+          <button data-add="aperta">＋ Risposta aperta</button>
+        </div>
+      </div>
+      <div class="card" id="domanda"></div>
+    </div>`;
+  ['title', 'desc'].forEach((k) => ($('#' + k).oninput = (e) => { Q[k] = e.target.value; tocca(); }));
+  $('#shuffle').onchange = (e) => { Q.shuffle = e.target.checked; tocca(); };
+  $('#main').querySelectorAll('[data-add]').forEach((b) => (b.onclick = () => {
+    Q.qs.splice(sel + 1, 0, nuovaDomanda(b.dataset.add));
+    sel++;
+    tocca();
+    disegna();
+    $('#qtext') && $('#qtext').focus();
+  }));
+  $('#salva').onclick = salva;
+  disegna();
+  stato();
+}
+
+function tocca() {
+  dirty = true;
+  stato();
+}
+
+function stato() {
+  $('#stato').textContent = dirty ? '● Modifiche non salvate' : Q.id ? '✓ Salvato' : '';
+}
+
+// problemi di una domanda, per segnarla in rosso nell'elenco prima ancora di salvare
+function problema(d) {
+  if (!d.q.trim()) return 'manca il testo';
+  if (d.type === 'aperta') return '';
+  if (d.o.some((x) => !x.trim())) return 'c\'e\' una risposta vuota';
+  if (!d.c.length) return 'segna almeno una risposta giusta';
+  return '';
+}
+
+function disegna() {
+  $('#slides').innerHTML = Q.qs.map((d, i) => `
+    <div class="slide ${i === sel ? 'on' : ''} ${problema(d) ? 'bad' : ''}" data-sel="${i}">
+      <b>${i + 1} · ${d.type === 'aperta' ? '✍️ aperta' : d.c.length > 1 ? '☑️ più giuste' : d.o.length === 2 ? '◐ due risposte' : '🔘 scelta'} · ${d.t}s</b>
+      ${esc(d.q) || '<span class="dim">(senza testo)</span>'}</div>`).join('');
+  $('#slides').querySelectorAll('[data-sel]').forEach((el) => (el.onclick = () => { sel = +el.dataset.sel; disegna(); }));
+  domandaV();
+}
+
+function domandaV() {
+  const d = Q.qs[sel];
+  const box = $('#domanda');
+  box.innerHTML = `
+    <div class="row" style="margin-bottom:14px">
+      <h3 style="margin:0">Domanda ${sel + 1} di ${Q.qs.length}</h3><span class="sp"></span>
+      <button class="small" id="su" ${sel ? '' : 'disabled'} title="Sposta su">↑</button>
+      <button class="small" id="giu" ${sel < Q.qs.length - 1 ? '' : 'disabled'} title="Sposta giù">↓</button>
+      <button class="small" id="dup" title="Duplica">⧉ Duplica</button>
+      <button class="small danger" id="del" ${Q.qs.length > 1 ? '' : 'disabled'}>🗑 Elimina</button>
+    </div>
+    <div class="field"><span>Tipo</span><div class="types">
+      <button data-type="scelta" class="${d.type === 'scelta' ? 'on' : ''}">🔘 Scelta multipla</button>
+      <button data-type="aperta" class="${d.type === 'aperta' ? 'on' : ''}">✍️ Risposta aperta</button></div></div>
+    <div class="field"><span>Domanda</span><textarea id="qtext" rows="2" maxlength="200" placeholder="Scrivi la domanda">${esc(d.q)}</textarea></div>
+    <div class="field"><span>Tempo per rispondere</span><select id="qt" style="max-width:12em">
+      ${TEMPI.map((t) => `<option value="${t}" ${t === d.t ? 'selected' : ''}>${t} secondi</option>`).join('')}</select></div>
+    <div id="risposte"></div>
+    <div class="err" id="qerr">${problema(d) ? '⚠️ ' + problema(d) : ''}</div>`;
+
+  $('#qtext').oninput = (e) => { d.q = e.target.value; aggiorna(); };
+  $('#qt').onchange = (e) => { d.t = +e.target.value; aggiorna(); };
+  box.querySelectorAll('[data-type]').forEach((b) => (b.onclick = () => {
+    if (b.dataset.type === d.type) return;
+    Q.qs[sel] = Object.assign(nuovaDomanda(b.dataset.type), { q: d.q, t: d.t });
+    tocca();
+    disegna();
+  }));
+  $('#su').onclick = () => sposta(-1);
+  $('#giu').onclick = () => sposta(1);
+  $('#dup').onclick = () => { Q.qs.splice(sel + 1, 0, JSON.parse(JSON.stringify(d))); sel++; tocca(); disegna(); };
+  $('#del').onclick = () => {
+    if (!confirm('Eliminare la domanda ' + (sel + 1) + '?')) return;
+    Q.qs.splice(sel, 1);
+    sel = Math.min(sel, Q.qs.length - 1);
+    tocca();
+    disegna();
+  };
+  risposteV(d);
+}
+
+// dopo una modifica di testo: aggiorna l'elenco a sinistra senza ridisegnare il campo in cui si scrive
+function aggiorna() {
+  tocca();
+  const d = Q.qs[sel];
+  const box = $('#slides').children[sel];
+  box.classList.toggle('bad', !!problema(d));
+  box.innerHTML = `<b>${sel + 1} · ${d.type === 'aperta' ? '✍️ aperta' : d.c.length > 1 ? '☑️ più giuste' : d.o.length === 2 ? '◐ due risposte' : '🔘 scelta'} · ${d.t}s</b>
+    ${esc(d.q) || '<span class="dim">(senza testo)</span>'}`;
+  $('#qerr').textContent = problema(d) ? '⚠️ ' + problema(d) : '';
+}
+
+function sposta(k) {
+  const [d] = Q.qs.splice(sel, 1);
+  sel += k;
+  Q.qs.splice(sel, 0, d);
+  tocca();
+  disegna();
+}
+
+function risposteV(d) {
+  const box = $('#risposte');
+  if (d.type === 'aperta') {
+    box.innerHTML = `<div class="field"><span>Risposte accettate, una per riga. Maiuscole, accenti e punteggiatura non contano.
+      Lascia vuoto per un <b>sondaggio</b>: nessun punto, sullo schermo si vede cosa ha scritto la sala.</span>
+      <textarea id="acc" rows="4" placeholder="Roma&#10;Città eterna">${esc(d.a.join('\n'))}</textarea></div>`;
+    $('#acc').oninput = (e) => { d.a = e.target.value.split('\n').map((x) => x.trim()).filter(Boolean); aggiorna(); };
+    return;
+  }
+  box.innerHTML = `<div class="field"><span>Risposte: segna quella giusta. Se ne segni più d'una, chi gioca deve sceglierle tutte.</span>
+    <div class="stack" style="gap:8px">${d.o.map((o, i) => `
+      <div class="optrow o${i}"><i>${LET[i]}</i>
+        <input type="text" data-o="${i}" maxlength="80" placeholder="Risposta ${LET[i]}" value="${esc(o)}">
+        <button class="giusta ${d.c.includes(i) ? 'on' : ''}" data-c="${i}">${d.c.includes(i) ? '✓ Giusta' : 'Sbagliata'}</button>
+        <button class="small" data-x="${i}" ${d.o.length > 2 ? '' : 'disabled'} title="Togli">✕</button>
+      </div>`).join('')}</div></div>
+    ${d.o.length < 4 ? '<button id="addo" class="small">＋ Aggiungi risposta</button>' : ''}`;
+  box.querySelectorAll('[data-o]').forEach((el) => (el.oninput = () => { d.o[+el.dataset.o] = el.value; aggiorna(); }));
+  box.querySelectorAll('[data-c]').forEach((b) => (b.onclick = () => {
+    const k = +b.dataset.c;
+    d.c = d.c.includes(k) ? d.c.filter((x) => x !== k) : [...d.c, k].sort((x, y) => x - y);
+    aggiorna();
+    risposteV(d);
+  }));
+  box.querySelectorAll('[data-x]').forEach((b) => (b.onclick = () => {
+    const k = +b.dataset.x;
+    d.o.splice(k, 1);
+    d.c = d.c.filter((x) => x !== k).map((x) => (x > k ? x - 1 : x));
+    aggiorna();
+    risposteV(d);
+  }));
+  if ($('#addo')) $('#addo').onclick = () => { d.o.push(''); aggiorna(); risposteV(d); };
+}
+
+async function salva() {
+  $('#err').textContent = '';
+  const brutta = Q.qs.findIndex((d) => problema(d));
+  if (!Q.title.trim()) { $('#err').textContent = 'Serve un titolo'; $('#title').focus(); return; }
+  if (brutta >= 0) {
+    sel = brutta;
+    disegna();
+    $('#err').textContent = `Domanda ${brutta + 1}: ${problema(Q.qs[brutta])}`;
+    return;
+  }
+  try {
+    $('#salva').disabled = true;
+    const r = Q.id ? await api('PUT', '/quizzes/' + Q.id, Q) : await api('POST', '/quizzes', Q);
+    const nuovo = !Q.id;
+    Q.id = r.id;
+    dirty = false;
+    if (nuovo) history.replaceState(null, '', '#/q/' + r.id);
+    stato();
+    if (nuovo) editorV(r.id, true); // ridisegna per il bottone Gioca, restando sulla domanda aperta
+  } catch (err) {
+    $('#err').textContent = err.message;
+  } finally {
+    if ($('#salva')) $('#salva').disabled = false;
+  }
+}
+
+// ---------------------------------------------------------------- risultati
+
+async function risultatiV(quizId) {
+  $('#main').innerHTML = '<p class="dim">Carico…</p>';
+  const [list, quizzes] = await Promise.all([api('GET', '/results' + (quizId ? '?quiz=' + encodeURIComponent(quizId) : '')), api('GET', '/quizzes')]);
+  const quiz = quizId && quizzes.find((q) => q.id === quizId);
+  const giocatori = list.reduce((n, r) => n + r.players, 0);
+  const conMedia = list.filter((r) => r.avg != null);
+  const media = conMedia.length ? Math.round(conMedia.reduce((n, r) => n + r.avg * r.players, 0) / Math.max(1, conMedia.reduce((n, r) => n + r.players, 0))) : null;
+  $('#main').innerHTML = `
+    <div class="row" style="margin-bottom:16px"><h2 style="margin:0">📊 Risultati${quiz ? ' · ' + esc(quiz.title) : ''}</h2>
+      <span class="sp"></span>${quizId ? '<a href="#/r">Tutti i risultati</a>' : ''}</div>
+    <div class="kpis">
+      <div class="kpi"><b>${list.length}</b><span>partite</span></div>
+      <div class="kpi"><b>${giocatori}</b><span>giocatori in tutto</span></div>
+      <div class="kpi"><b>${media == null ? '—' : media + '%'}</b><span>risposte giuste in media</span></div>
+    </div>
+    ${list.length ? `<div class="card scroll"><table>
+      <tr><th>Data</th><th>Quiz</th><th class="n">Giocatori</th><th class="n">Domande</th><th class="n">Giuste</th><th></th></tr>
+      ${list.map((r) => `<tr>
+        <td><a href="#/r/${encodeURIComponent(r.id)}">${data(r.date)}</a></td>
+        <td>${esc(r.title)} ${r.partial ? '<span class="pill">interrotta</span>' : ''}</td>
+        <td class="n">${r.players}</td><td class="n">${r.nq}</td><td class="n">${r.avg == null ? '—' : r.avg + '%'}</td>
+        <td><a href="#/r/${encodeURIComponent(r.id)}">Dettagli →</a></td></tr>`).join('')}
+    </table></div>` : `<div class="card"><p class="dim" style="margin:0">Nessuna partita ancora. I risultati si salvano da soli
+      quando giochi un quiz dallo schermo con l'accesso fatto: alla fine delle domande, o quando premi Termina.</p></div>`}`;
+}
+
+async function risultatoV(id) {
+  $('#main').innerHTML = '<p class="dim">Carico…</p>';
+  const r = await api('GET', '/results/' + id);
+  const pct = (a, b) => (b ? Math.round((a / b) * 100) : 0);
+  const media = (xs) => (xs.length ? xs.reduce((n, x) => n + x, 0) / xs.length : 0);
+  const conPunti = (q) => q.type === 'scelta' || q.a.length;
+
+  $('#main').innerHTML = `
+    <div class="row" style="margin-bottom:6px"><a href="#/r${r.quizId ? '?quiz=' + encodeURIComponent(r.quizId) : ''}">← Risultati</a></div>
+    <div class="row" style="margin-bottom:16px"><h2 style="margin:0">${esc(r.title)}</h2>
+      ${r.partial ? '<span class="pill">interrotta</span>' : ''}<span class="dim">${data(r.date)}</span><span class="sp"></span>
+      <button id="csv">⬇️ Esporta CSV</button><button class="danger" id="delr">🗑 Elimina</button></div>
+    <div class="kpis">
+      <div class="kpi"><b>${r.players.length}</b><span>giocatori</span></div>
+      <div class="kpi"><b>${r.questions.length}</b><span>domande giocate</span></div>
+      <div class="kpi"><b>${r.avg == null ? '—' : r.avg + '%'}</b><span>risposte giuste</span></div>
+      <div class="kpi"><b>${r.players[0] ? esc(r.players[0].name) : '—'}</b><span>primo posto${r.players[0] ? ' · ' + r.players[0].score + ' punti' : ''}</span></div>
+    </div>
+
+    <div class="stack">
+    <div class="card scroll"><h3>🏆 Classifica</h3><table>
+      <tr><th>#</th><th>Nome</th><th class="n">Punti</th><th class="n">Giuste</th></tr>
+      ${r.players.map((p) => `<tr><td>${p.rank}</td><td>${esc(p.ch || '')} ${esc(p.name)}</td><td class="n">${p.score}</td>
+        <td class="n">${p.ok}/${r.questions.filter(conPunti).length}</td></tr>`).join('')}
+    </table></div>
+
+    <h3 style="margin:10px 0 0">❓ Domanda per domanda</h3>
+    ${r.questions.map((q, k) => {
+      const tot = q.answers.length;
+      const giuste = q.answers.filter((a) => a.ok).length;
+      const tempo = media(q.answers.map((a) => a.ms)) / 1000;
+      const testa = `<div class="row" style="margin-bottom:8px"><h3 style="margin:0">${k + 1}. ${esc(q.q)}</h3><span class="sp"></span>
+        ${conPunti(q) ? `<span class="pill ${pct(giuste, tot) >= 50 ? 'ok' : 'ko'}">${pct(giuste, tot)}% giuste</span>` : '<span class="pill">sondaggio</span>'}</div>
+        <div class="dim" style="margin-bottom:8px">${tot} risposte su ${r.players.length} · tempo medio ${tempo.toFixed(1)}s
+          ${q.type === 'scelta' && q.c.length > 1 ? ' · più risposte giuste' : ''}</div>`;
+      if (q.type === 'aperta')
+        return `<div class="card">${testa}
+          ${q.a.length ? `<div style="margin-bottom:8px">Accettate: <b>${q.a.map(esc).join(' / ')}</b></div>` : ''}
+          <div class="tags">${(q.groups || []).map((g) => `<span class="tag ${g.ok ? 'ok' : ''}">${g.ok ? '✅ ' : ''}${esc(g.text)} · ${g.n}</span>`).join('') || '<span class="dim">Nessuna risposta</span>'}</div></div>`;
+      const max = Math.max(1, ...q.counts);
+      return `<div class="card">${testa}${q.o.map((o, i) => `
+        <div class="bar"><span class="lab">${q.c.includes(i) ? '✅' : '▫️'} ${LET[i]}. ${esc(o)}</span>
+          <div class="tr"><div class="o${i}" style="width:${(q.counts[i] / max) * 100}%;opacity:${q.c.includes(i) ? 1 : 0.45}"></div></div>
+          <span class="num">${q.counts[i]} · ${pct(q.counts[i], tot)}%</span></div>`).join('')}</div>`;
+    }).join('')}
+
+    <div class="card scroll"><h3>👥 Giocatore per giocatore</h3><table>
+      <tr><th>Nome</th>${r.questions.map((_, k) => `<th class="n">D${k + 1}</th>`).join('')}<th class="n">Punti</th></tr>
+      ${r.players.map((p) => `<tr><td>${esc(p.name)}</td>${r.questions.map((q) => {
+        const a = q.answers.find((x) => x.k === p.k);
+        if (!a) return '<td class="n dim" title="Nessuna risposta">–</td>';
+        const det = a.text != null ? a.text : a.picks.map((x) => LET[x]).join('');
+        return `<td class="n" title="${esc(det)} · ${(a.ms / 1000).toFixed(1)}s">${a.ok ? '✅' : a.ok === false ? '❌' : '💬'}
+          <span class="dim" style="font-size:12px">${esc(det.length > 10 ? det.slice(0, 10) + '…' : det)}</span></td>`;
+      }).join('')}<td class="n">${p.score}</td></tr>`).join('')}
+    </table></div>
+    </div>`;
+
+  $('#delr').onclick = async () => {
+    if (!confirm('Eliminare questa partita dallo storico?')) return;
+    await api('DELETE', '/results/' + id);
+    location.hash = '#/r' + (r.quizId ? '?quiz=' + encodeURIComponent(r.quizId) : '');
+  };
+  $('#csv').onclick = () => scarica(`${r.title} ${new Date(r.date).toISOString().slice(0, 10)}.csv`, csv(r), 'text/csv;charset=utf-8');
+}
+
+// punto e virgola e BOM: Excel in italiano lo apre gia' diviso in colonne
+function csv(r) {
+  const cella = (x) => '"' + String(x == null ? '' : x).replace(/"/g, '""') + '"';
+  const righe = [['Posizione', 'Nome', 'Punti', 'Giuste', ...r.questions.map((q, k) => `D${k + 1}: ${q.q}`)]];
+  for (const p of r.players) {
+    righe.push([p.rank, p.name, p.score, p.ok, ...r.questions.map((q) => {
+      const a = q.answers.find((x) => x.k === p.k);
+      if (!a) return '';
+      const det = a.text != null ? a.text : a.picks.map((x) => q.o[x]).join(' + ');
+      return det + (a.ok ? ' (giusta)' : a.ok === false ? ' (sbagliata)' : '');
+    })]);
+  }
+  return '﻿' + righe.map((x) => x.map(cella).join(';')).join('\r\n');
+}
+
+init();
+</script>
+</body>
+</html>

@@ -16,7 +16,7 @@ Il refresh della pagina host non perde la stanza. Chi blocca il telefono rientra
 
 | Gioco | Per chi | Come funziona | Durata |
 |---|---|---|---|
-| **Quiz** | bambini / ragazzi / adulti (3 set separati) | 8 domande, 4 risposte. Punti per correttezza + velocità (500 + fino a 500 bonus). Le soluzioni si vedono solo nel ripasso finale. | ~3 min |
+| **Quiz** | bambini / ragazzi / adulti (3 set separati), o **i tuoi quiz** | 8 domande, 4 risposte. Punti per correttezza + velocità (500 + fino a 500 bonus). Le soluzioni si vedono solo nel ripasso finale. Con l'accesso fatto: quiz tuoi con più risposte giuste e risposte aperte, e statistiche salvate. | ~3 min |
 | **Riflessi** | tutti, ottimo per i bambini (non serve leggere) | 8 manche. Schermo rosso, poi verde: chi tocca prima vince. Partenza anticipata = 0 punti. | ~1,5 min |
 | **Insieme** | tutta la sala, cooperativo | 3 round da 30s. Tutti battono sul telefono per riempire una barra che si svuota da sola. Ogni battuta fa un colpo secco e il tono sale col riempirsi della barra: la sala si sente. Se ce la fate, punti a tutti (di piu' a chi ha battuto di piu'). | ~2 min |
 | **Corsa** 🏎️ | dai 6 anni in su | Kart. Si avanza alternando i due pedali, sinistra-destra-sinistra. Martellare sempre lo stesso non porta da nessuna parte. Pedana turbo ogni 25 metri, podio ai primi tre al traguardo. | ~1 min |
@@ -37,6 +37,35 @@ Sul telefono non è decorativo: nella Corsa è il tuo kart che avanza sulla pist
 bandiera a scacchi (e diventa 🚀 sulla pedana turbo), in Salta è il personaggio che scavalca
 l'ostacolo in arrivo da destra — guardando il telefono capisci il tempo senza alzare gli occhi
 allo schermo. Ampliali o cambiali nella lista `PERSONAGGI` in cima a `server.js`.
+
+### I tuoi quiz, come su Kahoot
+
+Su **`/admin`** l'host crea un account (nome utente e password) e da lì:
+
+- **crea, modifica, duplica, elimina** quanti quiz vuole. Ogni quiz si salva e si ritrova al prossimo evento;
+- sceglie per ogni domanda il **tipo** e il **tempo** (da 5 a 120 secondi):
+  - 🔘 **Scelta multipla**: da 2 a 4 risposte. Se ne segni giuste più d'una, sul telefono si spuntano
+    e si conferma, e vale solo se le hai prese **tutte e sole** quelle giuste;
+  - ◐ **Vero o falso**: una scelta multipla con due risposte già pronte;
+  - ✍️ **Risposta aperta**: si scrive sul telefono. Vale se combacia con una delle risposte accettate
+    (maiuscole, accenti e punteggiatura non contano: `ROMA!` = `roma`). Senza risposte accettate è un
+    **sondaggio**: niente punti, e nel ripasso lo schermo mostra cosa ha scritto la sala;
+- esporta un quiz in JSON e lo reimporta (backup, o per passarlo a un collega).
+
+In sala d'attesa lo schermo `/host` mostra i tuoi quiz in un menu: scegli e premi **▶ Avvia**.
+Da `/admin` il bottone **▶ Gioca** apre lo schermo con quel quiz già selezionato.
+
+**Risultati.** Ogni partita giocata con l'accesso fatto si salva da sola: a fine domande, o a
+**Termina** se la interrompi (segnata come "interrotta"). In `/admin` → **Risultati** per ogni partita:
+classifica, percentuale di risposte giuste, per ogni domanda quante persone hanno scelto cosa (o le
+risposte aperte raggruppate) e il tempo medio, e una tabella giocatore per giocatore. **Esporta CSV**
+la apre già in colonne in Excel. Valgono anche i quiz di `questions.json`, se li lanci da loggato.
+
+Solo l'host ha l'account: chi gioca entra sempre col QR e il nome, senza registrarsi.
+
+Dove finisce tutto: nella cartella `data/` accanto a `server.js` (o in `DATA_DIR`), tre file JSON.
+Per un backup basta copiarla. Le password sono salvate cifrate (scrypt), mai in chiaro.
+Online conviene **`SIGNUP=chiusa`**: si registra il primo account (il tuo) e poi nessun altro.
 
 ### Perche' "Raccogli" gira sul server
 
@@ -141,6 +170,10 @@ Serve un host che faccia girare un processo Node persistente. Tutti hanno un pia
 2. Render → New → Web Service → collega il repo.
 3. Build `npm install`, Start `npm start`. Le WebSocket funzionano senza configurare nulla.
 4. Variabile d'ambiente `PUBLIC_URL` = l'URL finale (es. `https://gioco.tuodominio.it`), così il QR è corretto.
+5. Variabile `SIGNUP=chiusa`, dopo aver creato il tuo account su `/admin`.
+6. Per non perdere quiz e risultati: aggiungi un **Disk** (es. montato su `/var/data`) e metti
+   `DATA_DIR=/var/data`. Il disco del piano gratuito si azzera a ogni riavvio e deploy: senza disco
+   persistente i quiz salvati spariscono. In alternativa esportali in JSON da `/admin` e reimportali.
 
 Alternative equivalenti: **Railway**, **Fly.io**, o una VPS con `pm2`.
 
@@ -157,19 +190,22 @@ Un redirect/proxy Netlify **non** va bene: non inoltra l'upgrade WebSocket.
 - I telefoni usano la **loro** connessione dati. Il wifi della sede non serve.
 - Testato fino a 300 giocatori per stanza (limite impostato in `server.js`).
 - Lo schermo del telefono resta acceso durante la partita (Wake Lock, dove il browser lo supporta).
-- Le stanze vivono in memoria: riavviare il server azzera tutto. Voluto — è roba da 5 minuti.
+- Le stanze vivono in memoria: riavviare il server azzera le partite in corso. Voluto — è roba da 5 minuti.
+  Quiz salvati, account e risultati invece stanno su file in `data/` e restano.
 - Un telefono si blocca? Guarda la finestra del server: gli errori dei telefoni compaiono lì
   come `[telefono Nome, gioco] messaggio` (i primi 5 per persona).
 
 ## File
 
 ```
-server.js        server + le nove meccaniche di gioco
-questions.json   le domande del quiz, per fascia d'età, e i dilemmi di Come la sala
-public/host.html schermo grande (proiettore)
-public/play.html telefono
-test.js          check della logica di punteggio e dei round
-avvia.bat        lancio rapido in locale
-firewall.bat     apre la porta 3000 sulla rete locale (una volta sola)
-pusha.bat        commit e push su GitHub
+server.js         server + le nove meccaniche di gioco + API di account, quiz e risultati
+store.js          salvataggio su file: account, quiz dell'host, risultati delle partite
+questions.json    le domande del quiz, per fascia d'età, e i dilemmi di Come la sala
+public/host.html  schermo grande (proiettore)
+public/play.html  telefono
+public/admin.html /admin: accesso, editor dei quiz, statistiche
+test.js           check della logica di punteggio e dei round
+avvia.bat         lancio rapido in locale
+firewall.bat      apre la porta 3000 sulla rete locale (una volta sola)
+pusha.bat         commit e push su GitHub
 ```

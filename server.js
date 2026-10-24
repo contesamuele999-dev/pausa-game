@@ -5,6 +5,7 @@ const express = require('express');
 const QRCode = require('qrcode');
 const { WebSocketServer } = require('ws');
 const QUESTIONS = require('./questions.json');
+const store = require('./store');
 
 const TICK_MS = 150;
 const ROOM_TTL = 3 * 60 * 60 * 1000;
@@ -66,27 +67,93 @@ const GAMES = {};
 
 // --- Quiz: le risposte giuste NON si vedono durante la partita.
 //     A fine giro l'host apre il ripasso e le scorre una per una davanti alla sala.
+//     Due tipi di domanda: 'scelta' (da 2 a 4 risposte, una o piu' giuste) e 'aperta'
+//     (si scrive la risposta; vale se combacia con una di quelle accettate, e se non
+//     ce ne sono e' un sondaggio: niente punti, si guardano solo le risposte).
+//     Le domande arrivano da questions.json (per fascia d'eta') o da un quiz salvato dall'host.
+
+// "Perche'?" e "perche" valgono uguale: minuscole, niente accenti, niente punteggiatura
+function norm(s) {
+  return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+const sameSet = (a, b) => a.length === b.length && a.every((x) => b.includes(x));
+
 GAMES.quiz = {
   label: 'Quiz',
   live: ['domanda'],
   levels: { bambini: 25, ragazzi: 20, adulti: 20 },
 
+  // le domande di questions.json hanno una sola risposta giusta, come numero
+  _daFile(level) {
+    return shuffle(QUESTIONS[level].slice()).slice(0, 8)
+      .map((d) => ({ type: 'scelta', q: d.q, o: d.o, c: [d.c], t: this.levels[level] }));
+  },
+
   start(room, opts) {
-    const level = this.levels[opts.level] ? opts.level : 'adulti';
-    const pool = shuffle(QUESTIONS[level].slice());
-    room.level = level;
+    let qs;
+    if (opts.quiz) {
+      qs = opts.quiz.qs.map((d) => Object.assign({}, d));
+      if (opts.quiz.shuffle) shuffle(qs);
+      room.level = opts.quiz.title;
+    } else {
+      const level = this.levels[opts.level] ? opts.level : 'adulti';
+      qs = this._daFile(level);
+      room.level = level;
+    }
     room.g = {
-      qs: pool.slice(0, Math.min(8, pool.length)),
-      dur: this.levels[level] * 1000,
+      qs,
+      quizId: opts.quiz ? opts.quiz.id : null,
+      title: opts.quiz ? opts.quiz.title : 'Quiz ' + room.level,
+      dur: 0,
       i: -1,
       phase: 'via',
       until: Date.now() + 3000,
       t0: 0,
       ans: new Map(),
-      log: [], // per ogni domanda: chi ha scelto cosa, serve al ripasso finale
+      log: [], // per ogni domanda: chi ha risposto cosa, serve al ripasso e alle statistiche
       r: -1
     };
     resetScores(room);
+  },
+
+  // true/false; null per un'aperta senza risposte accettate (sondaggio)
+  giusta(q, a) {
+    if (q.type === 'aperta') return q.a.length ? q.a.some((x) => norm(x) === norm(a.text)) : null;
+    return sameSet(a.picks, q.c);
+  },
+
+  _chiudi(room, now) {
+    const g = room.g;
+    const q = g.qs[g.i];
+    const risposte = new Map();
+    for (const [pid, a] of g.ans) {
+      const ok = this.giusta(q, a);
+      const speed = 1 - clamp((a.at - g.t0) / g.dur, 0, 1);
+      const pts = ok ? 500 + Math.round(500 * speed) : 0;
+      const p = room.players.get(pid);
+      if (p) p.score += pts;
+      risposte.set(pid, Object.assign({}, a, { ok, pts, ms: a.at - g.t0 }));
+    }
+    const voce = { answers: risposte };
+    if (q.type === 'scelta') voce.counts = q.o.map((_, k) => [...g.ans.values()].filter((a) => a.picks.includes(k)).length);
+    else voce.groups = this._gruppi([...risposte.values()]);
+    g.log.push(voce);
+    g.phase = 'stacco';
+    g.until = now + 2500;
+  },
+
+  // risposte aperte raggruppate: "Roma", "roma " e "ROMA!" diventano una voce sola
+  _gruppi(list) {
+    const m = new Map();
+    for (const a of list) {
+      const k = norm(a.text);
+      const x = m.get(k) || { text: a.text, n: 0, ok: a.ok };
+      x.n++;
+      m.set(k, x);
+    }
+    return [...m.values()].sort((a, b) => b.n - a.n);
   },
 
   tick(room, now) {
@@ -96,19 +163,7 @@ GAMES.quiz = {
     if (now < g.until) return false;
 
     if (g.phase === 'domanda') {
-      const q = g.qs[g.i];
-      for (const [pid, a] of g.ans) {
-        const p = room.players.get(pid);
-        if (!p || a.pick !== q.c) continue;
-        const speed = 1 - clamp((a.at - g.t0) / g.dur, 0, 1);
-        p.score += 500 + Math.round(500 * speed);
-      }
-      g.log.push({
-        picks: new Map([...g.ans].map(([pid, a]) => [pid, a.pick])),
-        counts: q.o.map((_, k) => [...g.ans.values()].filter((a) => a.pick === k).length)
-      });
-      g.phase = 'stacco';
-      g.until = now + 2500;
+      this._chiudi(room, now);
       return true;
     }
 
@@ -120,6 +175,7 @@ GAMES.quiz = {
     }
     g.ans = new Map();
     g.t0 = now;
+    g.dur = g.qs[g.i].t * 1000;
     g.phase = 'domanda';
     g.until = now + g.dur;
     return true;
@@ -130,8 +186,19 @@ GAMES.quiz = {
     if (g.phase !== 'domanda') return false;
     if (g.ans.has(p.pid)) return false;
     const q = g.qs[g.i];
-    if (!Number.isInteger(m.pick) || m.pick < 0 || m.pick >= q.o.length) return false;
-    g.ans.set(p.pid, { pick: m.pick, at: Date.now() });
+    const at = Date.now();
+    if (q.type === 'aperta') {
+      const text = String(m.text == null ? '' : m.text).replace(/\s+/g, ' ').trim().slice(0, 80);
+      if (!text) return false;
+      g.ans.set(p.pid, { text, at });
+      return true;
+    }
+    // una giusta sola: basta un tocco. Piu' giuste: si spuntano e si conferma.
+    const picks = q.c.length > 1 ? m.picks : [m.pick];
+    if (!Array.isArray(picks) || !picks.length || picks.length > q.o.length) return false;
+    if (!picks.every((k) => Number.isInteger(k) && k >= 0 && k < q.o.length)) return false;
+    if (new Set(picks).size !== picks.length) return false;
+    g.ans.set(p.pid, { picks: picks.slice().sort((a, b) => a - b), at });
     return true;
   },
 
@@ -141,6 +208,17 @@ GAMES.quiz = {
     g.r++;
     if (g.r >= g.qs.length) g.phase = 'fine';
     return true;
+  },
+
+  // cosa si vede di una domanda mentre si risponde: mai la soluzione
+  _testo(q) {
+    const v = { type: q.type, q: q.q };
+    if (q.type === 'scelta') Object.assign(v, { o: q.o, multi: q.c.length > 1 ? 1 : 0 });
+    return v;
+  },
+
+  _soluzione(q) {
+    return q.type === 'scelta' ? { c: q.c } : { a: q.a };
   },
 
   hostView(room, now) {
@@ -156,7 +234,15 @@ GAMES.quiz = {
       };
       if (g.r >= 0) {
         const q = g.qs[g.r];
-        Object.assign(v, { n: g.r + 1, q: q.q, o: q.o, c: q.c, counts: g.log[g.r].counts });
+        const l = g.log[g.r];
+        const tutte = [...l.answers.values()];
+        Object.assign(v, this._testo(q), this._soluzione(q), {
+          n: g.r + 1,
+          risposte: tutte.length,
+          giuste: tutte.filter((a) => a.ok).length
+        });
+        if (q.type === 'scelta') v.counts = l.counts;
+        else v.groups = l.groups.slice(0, 12);
       }
       return v;
     }
@@ -168,11 +254,7 @@ GAMES.quiz = {
       answered: g.ans.size,
       players: room.players.size
     };
-    if (g.phase === 'domanda') {
-      const q = g.qs[g.i];
-      v.q = q.q;
-      v.o = q.o;
-    }
+    if (g.phase === 'domanda') Object.assign(v, this._testo(g.qs[g.i]));
     return v;
   },
 
@@ -184,20 +266,64 @@ GAMES.quiz = {
       const v = { phase: g.phase, tot: g.qs.length, r: g.r };
       if (g.r >= 0) {
         const q = g.qs[g.r];
-        const pick = g.log[g.r].picks.get(p.pid);
-        Object.assign(v, { n: g.r + 1, q: q.q, o: q.o, c: q.c, pick: pick == null ? null : pick, ok: pick === q.c });
+        const a = g.log[g.r].answers.get(p.pid);
+        Object.assign(v, this._testo(q), this._soluzione(q), {
+          n: g.r + 1,
+          picks: a && a.picks ? a.picks : null,
+          text: a && a.text != null ? a.text : null,
+          answered: a ? 1 : 0,
+          ok: a ? a.ok : null
+        });
       }
       return v;
     }
     const v = { phase: g.phase, n: g.i + 1, tot: g.qs.length, left: Math.max(0, Math.ceil((g.until - now) / 1000)) };
     if (g.phase === 'domanda') {
-      const q = g.qs[g.i];
       const a = g.ans.get(p.pid);
-      v.q = q.q;
-      v.o = q.o;
-      v.pick = a ? a.pick : null;
+      Object.assign(v, this._testo(g.qs[g.i]), {
+        picks: a && a.picks ? a.picks : null,
+        text: a && a.text != null ? a.text : null,
+        answered: a ? 1 : 0
+      });
     }
     return v;
+  },
+
+  // la partita come resta nello storico dell'host: chi ha risposto cosa, e quanto ci ha messo
+  report(room) {
+    const g = room.g;
+    // k collega le risposte al giocatore: due "Marco" in sala restano due persone diverse
+    const tutti = standings(room);
+    const chi = new Map(tutti.map((p, k) => [p.pid, k]));
+    const players = tutti.map((p, k) => ({
+      k, name: p.name, ch: p.ch, score: p.score, rank: p.rank,
+      ok: g.log.filter((l) => (l.answers.get(p.pid) || {}).ok).length
+    }));
+    const questions = g.log.map((l, k) => {
+      const q = g.qs[k];
+      const answers = [...l.answers].filter(([pid]) => chi.has(pid)).map(([pid, a]) => {
+        const x = { k: chi.get(pid), name: players[chi.get(pid)].name, ok: a.ok, pts: a.pts, ms: a.ms };
+        if (a.picks) x.picks = a.picks; else x.text = a.text;
+        return x;
+      });
+      const out = Object.assign({}, q, { answers });
+      if (l.counts) out.counts = l.counts;
+      if (l.groups) out.groups = l.groups;
+      return out;
+    });
+    const punteggiabili = questions.filter((q) => q.type === 'scelta' || q.a.length);
+    const possibili = punteggiabili.length * players.length;
+    const giuste = punteggiabili.reduce((n, q) => n + q.answers.filter((a) => a.ok).length, 0);
+    return {
+      owner: room.user,
+      quizId: g.quizId,
+      title: g.title,
+      date: Date.now(),
+      partial: g.log.length < g.qs.length,
+      avg: possibili ? Math.round((giuste / possibili) * 100) : null,
+      players,
+      questions
+    };
   }
 };
 
@@ -1010,6 +1136,7 @@ function hostState(room, now) {
     game: room.game,
     gameLabel: room.game ? GAMES[room.game].label : null,
     level: room.level,
+    user: room.user || null,
     nplus: room.nplus ? 1 : 0,
     players: standings(room),
     view: room.game ? GAMES[room.game].hostView(room, now) : null
@@ -1051,7 +1178,109 @@ const app = express();
 app.use(express.static(path.join(__dirname, 'public'), { index: false }));
 app.get('/', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'play.html')));
 app.get('/host', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'host.html')));
+app.get('/admin', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'admin.html')));
 app.get('/health', (_req, res) => res.json({ ok: true, rooms: rooms.size }));
+
+// ---------------------------------------------------------------- account e quiz salvati
+// Solo l'host ha un account: chi gioca dal telefono continua a entrare con nome e codice.
+
+const api = express.Router();
+api.use(express.json({ limit: '512kb' }));
+
+// SIGNUP=chiusa: si registra solo il primo account, poi la porta si chiude.
+// Utile online, dove chiunque trovi l'indirizzo potrebbe crearsi un account.
+const signupOpen = () => process.env.SIGNUP !== 'chiusa' || store.userCount() === 0;
+
+// tentativi di login sbagliati per IP: dieci ogni dieci minuti, poi si aspetta
+const tentativi = new Map();
+function troppiTentativi(ip) {
+  const now = Date.now();
+  const t = (tentativi.get(ip) || []).filter((x) => now - x < 10 * 60 * 1000);
+  tentativi.set(ip, t);
+  return t.length >= 10;
+}
+
+function setSession(req, res, user) {
+  const secure = (req.headers['x-forwarded-proto'] || req.protocol) === 'https' ? '; Secure' : '';
+  res.setHeader('Set-Cookie', `sid=${encodeURIComponent(store.makeToken(user))}; Path=/; HttpOnly; SameSite=Lax; ` +
+    `Max-Age=${store.SESSION_DAYS * 86400}${secure}`);
+}
+
+api.use((req, _res, next) => {
+  req.user = store.userFromCookie(req.headers.cookie);
+  next();
+});
+
+const auth = (req, res, next) => (req.user ? next() : res.status(401).json({ err: 'Devi accedere' }));
+
+api.get('/me', (req, res) => res.json({ user: req.user, signup: signupOpen() }));
+
+api.post('/register', (req, res) => {
+  if (!signupOpen()) return res.status(403).json({ err: 'Le registrazioni sono chiuse' });
+  const r = store.register(req.body.user, req.body.pass);
+  if (r.err) return res.status(400).json(r);
+  setSession(req, res, r.user);
+  res.json({ user: r.user });
+});
+
+api.post('/login', (req, res) => {
+  if (troppiTentativi(req.ip)) return res.status(429).json({ err: 'Troppi tentativi, riprova tra qualche minuto' });
+  const user = store.checkLogin(req.body.user, req.body.pass);
+  if (!user) {
+    tentativi.get(req.ip).push(Date.now());
+    return res.status(401).json({ err: 'Nome utente o password sbagliati' });
+  }
+  setSession(req, res, user);
+  res.json({ user });
+});
+
+api.post('/logout', (_req, res) => {
+  res.setHeader('Set-Cookie', 'sid=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0');
+  res.json({ ok: true });
+});
+
+api.get('/quizzes', auth, (req, res) => res.json(store.listQuizzes(req.user)));
+
+api.get('/quizzes/:id', auth, (req, res) => {
+  const q = store.getQuiz(req.user, req.params.id);
+  q ? res.json(q) : res.status(404).json({ err: 'Quiz non trovato' });
+});
+
+api.post('/quizzes', auth, (req, res) => {
+  const r = store.saveQuiz(req.user, null, req.body);
+  r.err ? res.status(400).json(r) : res.json(r.quiz);
+});
+
+api.put('/quizzes/:id', auth, (req, res) => {
+  const r = store.saveQuiz(req.user, req.params.id, req.body);
+  r.err ? res.status(400).json(r) : res.json(r.quiz);
+});
+
+api.delete('/quizzes/:id', auth, (req, res) => res.json({ ok: store.deleteQuiz(req.user, req.params.id) }));
+
+api.get('/results', auth, (req, res) => res.json(store.listResults(req.user, req.query.quiz)));
+
+api.get('/results/:id', auth, (req, res) => {
+  const r = store.getResult(req.user, req.params.id);
+  r ? res.json(r) : res.status(404).json({ err: 'Risultato non trovato' });
+});
+
+api.delete('/results/:id', auth, (req, res) => res.json({ ok: store.deleteResult(req.user, req.params.id) }));
+
+app.use('/api', api);
+
+// Una partita a quiz finisce nello storico dell'host che ha fatto l'accesso.
+// Una volta sola: alla fine delle domande, o a "Termina" se si e' interrotto prima.
+function salvaQuiz(room) {
+  const g = room.g;
+  if (room.game !== 'quiz' || !room.user || g.saved || !g.log || !g.log.length) return;
+  g.saved = true;
+  try {
+    store.addResult(GAMES.quiz.report(room));
+  } catch (e) {
+    console.error('Salvataggio risultati non riuscito:', e.message);
+  }
+}
 
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
@@ -1065,6 +1294,7 @@ function publicUrl(req) {
 wss.on('connection', (ws, req) => {
   ws.role = null;
   ws.room = null;
+  ws.user = store.userFromCookie(req.headers.cookie); // l'host che ha fatto l'accesso, se c'e'
 
   ws.on('message', async (raw) => {
     let m;
@@ -1076,8 +1306,9 @@ wss.on('connection', (ws, req) => {
     const room = ws.room ? rooms.get(ws.room) : null;
     if (room) room.seen = Date.now();
 
-    // server riavviato: la vecchia stanza non c'e' piu', apri direttamente una nuova
-    if (m.t === 'rehost' && !rooms.has(m.code)) m.t = 'host';
+    // server riavviato: la vecchia stanza non c'e' piu', apri direttamente una nuova.
+    // Stessa cosa se la stanza era di un altro account: i suoi risultati restano suoi.
+    if (m.t === 'rehost' && (!rooms.has(m.code) || (rooms.get(m.code).user && rooms.get(m.code).user !== ws.user))) m.t = 'host';
 
     // --- host apre la stanza
     if (m.t === 'host') {
@@ -1088,6 +1319,7 @@ wss.on('connection', (ws, req) => {
         url,
         qr: await QRCode.toDataURL(url, { margin: 1, width: 560, color: { dark: '#0b1020', light: '#ffffff' } }),
         host: ws,
+        user: ws.user,
         players: new Map(),
         game: null,
         level: null,
@@ -1106,6 +1338,7 @@ wss.on('connection', (ws, req) => {
     if (m.t === 'rehost' && rooms.has(m.code)) {
       const r = rooms.get(m.code);
       r.host = ws;
+      if (ws.user) r.user = ws.user; // accesso fatto dopo aver aperto la stanza
       ws.role = 'host';
       ws.room = m.code;
       push(r);
@@ -1142,11 +1375,18 @@ wss.on('connection', (ws, req) => {
     // --- comandi host
     if (ws.role === 'host') {
       if (m.t === 'start' && GAMES[m.game]) {
+        const opts = { level: m.level };
+        if (m.game === 'quiz' && m.quiz) {
+          opts.quiz = ws.user && store.getQuiz(ws.user, String(m.quiz));
+          if (!opts.quiz) return send(ws, { t: 'err', msg: 'Quiz non trovato: rifai l\'accesso' });
+        }
+        salvaQuiz(room);
         room.game = m.game;
-        GAMES[m.game].start(room, { level: m.level });
+        GAMES[m.game].start(room, opts);
         room.dirty = true;
       }
       if (m.t === 'stop') {
+        salvaQuiz(room);
         room.game = null;
         room.level = null;
         room.g = {};
@@ -1204,6 +1444,7 @@ setInterval(() => {
     if (room.game) {
       const G = GAMES[room.game];
       if (G.tick(room, now)) room.dirty = true;
+      if (room.game === 'quiz' && room.g.phase === 'ripasso') salvaQuiz(room);
       if (G.live.includes(room.g.phase)) room.dirty = true; // countdown e barre che scorrono
     }
     if (room.dirty) {
@@ -1225,4 +1466,4 @@ if (require.main === module) {
   server.listen(port, () => console.log(`Pausa Game su http://localhost:${port}  (schermo: /host)`));
 }
 
-module.exports = { GAMES, rooms, standings, PERSONAGGI };
+module.exports = { GAMES, rooms, standings, PERSONAGGI, app };

@@ -99,6 +99,11 @@
   .extra{display:block;text-align:center;margin-top:2vh;color:var(--dim);text-decoration:none;
          font-size:clamp(12px,1.1vw,17px);border:1px solid var(--line);border-radius:999px;padding:.5rem 1rem}
   .extra:hover{color:var(--fg);background:#1e2745}
+  .miei{display:flex;gap:.6rem;align-items:center;flex-wrap:wrap}
+  .miei select{flex:1;min-width:10em;font:inherit;font-size:clamp(13px,1.1vw,18px);background:#0e1530;color:var(--fg);
+               border:1px solid var(--line);border-radius:14px;padding:.9rem .8rem}
+  .miei a{color:var(--dim);font-size:clamp(12px,1vw,16px)}
+  .miei a:hover{color:var(--fg)}
   .hide{display:none!important}
 </style>
 </head>
@@ -138,6 +143,7 @@
         <ol class="board hide" id="board"></ol>
       </div>
       <div class="card">
+        <div id="miei" style="margin-bottom:.8rem"></div>
         <div class="btns" id="menu">
           <button data-g="quiz" data-l="bambini">Quiz bambini</button>
           <button data-g="quiz" data-l="ragazzi">Quiz ragazzi</button>
@@ -169,7 +175,12 @@ const saved = sessionStorage.getItem('room');
 function connect() {
   ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host);
   ws.onopen = () => ws.send(JSON.stringify(saved ? { t: 'rehost', code: saved } : { t: 'host' }));
-  ws.onmessage = (e) => { S = JSON.parse(e.data); if (S.t === 'host') render(S); };
+  ws.onmessage = (e) => {
+    const m = JSON.parse(e.data);
+    if (m.t === 'err') return alert(m.msg);
+    S = m;
+    if (S.t === 'host') render(S);
+  };
   ws.onclose = () => setTimeout(connect, 1200);
 }
 
@@ -190,6 +201,9 @@ function render(s) {
   $('#stage').classList.toggle('hide', !playing);
   $('#bstop').classList.toggle('hide', !playing);
   $('#menu').querySelectorAll('[data-g]').forEach((b) => b.classList.toggle('hide', playing));
+  $('#miei').classList.toggle('hide', playing);
+  // accesso fatto in un'altra scheda: si riapre il collegamento, cosi' il server sa chi sei
+  riaggancia(s);
   $('#names').classList.toggle('hide', playing);
   $('#board').classList.toggle('hide', !playing);
 
@@ -232,14 +246,25 @@ function quizView(v, s) {
     if (v.r < 0)
       return `<div class="big">Finito! 🎯</div>
         <div class="sub" style="margin-top:2vh">${v.tot} domande in cassaforte.<br>Quando vuoi, sveliamo le risposte.</div>`;
-    return `<div class="sub">Risposta ${v.n}/${v.tot}</div>
-      <p class="q">${esc(v.q)}</p>
+    const quante = v.type === 'aperta' && !v.a.length ? `${v.risposte} risposte` : `${v.giuste} giuste su ${v.risposte}`;
+    const testa = `<div class="sub">Risposta ${v.n}/${v.tot} · ${quante}</div><p class="q">${esc(v.q)}</p>`;
+    if (v.type === 'aperta')
+      return `${testa}
+        <div class="sub" style="color:var(--fg);margin-bottom:2vh">${v.a.length ? 'Risposta giusta: <b>' + v.a.map(esc).join(' / ') + '</b>' : 'Sondaggio: ecco cosa ha scritto la sala'}</div>
+        <div class="names" style="justify-content:center">${v.groups.map((g) => `
+          <span class="name" style="${g.ok ? 'border-color:var(--ok);background:#14361f' : ''};font-size:clamp(16px,${g.n > 1 ? 2.2 : 1.5}vw,36px)">
+            ${g.ok ? '✅ ' : ''}${esc(g.text)} <b style="opacity:.7">${g.n}</b></span>`).join('') || '<div class="sub">Nessuna risposta</div>'}</div>`;
+    return `${testa}
       <div class="opts">${v.o.map((o, i) => `
-        <div class="opt o${i} ${i === v.c ? 'win' : 'dim'}"><i>${LET[i]}</i>${esc(o)}<b>${v.counts[i]}</b></div>`).join('')}</div>`;
+        <div class="opt o${i} ${v.c.includes(i) ? 'win' : 'dim'}"><i>${LET[i]}</i>${esc(o)}<b>${v.counts[i]}</b></div>`).join('')}</div>`;
   }
 
-  return `<div class="sub">Domanda ${v.n}/${v.tot} · ${v.left}s · ${v.answered} risposte</div>
-    <p class="q">${esc(v.q)}</p>
+  const testa = `<div class="sub">Domanda ${v.n}/${v.tot} · ${v.left}s · ${v.answered} risposte</div>
+    <p class="q">${esc(v.q)}</p>`;
+  if (v.type === 'aperta')
+    return `${testa}<div class="big" style="font-size:clamp(28px,4vw,64px)">✍️ Scrivi la risposta sul telefono</div>`;
+  return `${testa}
+    ${v.multi ? '<div class="sub" style="margin:-1vh 0 2vh">☑️ Più risposte giuste: sceglile tutte</div>' : ''}
     <div class="opts">${v.o.map((o, i) => `
       <div class="opt o${i}"><i>${LET[i]}</i>${esc(o)}</div>`).join('')}</div>`;
 }
@@ -403,6 +428,35 @@ function insiemeView(v, s) {
 }
 
 $('#bnplus').onclick = () => ws.send(JSON.stringify({ t: 'nplus' }));
+
+// I quiz salvati dall'host. Si ricaricano quando si torna su questa scheda, cosi'
+// un quiz appena modificato in /admin e' gia' quello che parte.
+let me = { user: null }, riagganci = 0;
+function riaggancia(s) {
+  if (me.user && s.user !== me.user && ws.readyState === 1 && riagganci++ < 3) ws.close(); // tre tentativi, non un ciclo infinito
+}
+const scelto = new URLSearchParams(location.search).get('quiz');
+async function miei() {
+  try {
+    me = await (await fetch('/api/me')).json();
+    if (!me.user) {
+      $('#miei').innerHTML = `<div class="miei"><a href="/admin" target="_blank">🔑 Accedi per creare e salvare i tuoi quiz</a></div>`;
+      return;
+    }
+    const list = await (await fetch('/api/quizzes')).json();
+    const prima = $('#mq') ? $('#mq').value : scelto;
+    $('#miei').innerHTML = `<div class="miei">
+      <select id="mq">${list.length ? list.map((q) => `<option value="${esc(q.id)}">${esc(q.title)} · ${q.n} domande</option>`).join('')
+        : '<option value="">Nessun quiz salvato</option>'}</select>
+      <button class="go" id="bmq" ${list.length ? '' : 'disabled'}>▶ Avvia</button>
+      <a href="/admin" target="_blank">✏️ I miei quiz e i risultati (${esc(me.user)})</a></div>`;
+    if (prima && list.some((q) => q.id === prima)) $('#mq').value = prima;
+    $('#bmq').onclick = () => $('#mq').value && ws.send(JSON.stringify({ t: 'start', game: 'quiz', quiz: $('#mq').value }));
+    if (S) riaggancia(S);
+  } catch {}
+}
+window.addEventListener('focus', miei);
+miei();
 
 $('#menu').addEventListener('click', (e) => {
   const b = e.target.closest('button');

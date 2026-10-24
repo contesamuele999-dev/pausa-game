@@ -178,7 +178,7 @@ function login() {
 // sparirebbe da sotto il dito e i tocchi andrebbero persi. Quelle schermate hanno
 // un guscio fisso (#live) e aggiorniamo solo i numeri.
 const G = {
-  quiz:     { view: quizV },
+  quiz:     { view: quizV,    can: (v) => v.phase === 'domanda' && !v.answered && $('#live') && $('#live').dataset.n == v.n, patch: quizP },
   riflessi: { view: riflessiV },
   insieme:  { view: insiemeV, can: (v) => v.phase === 'play',  patch: insiemeP },
   corsa:    { view: corsaV,   can: (v) => v.phase === 'gara',  patch: corsaP },
@@ -223,27 +223,66 @@ function fineV(s) {
 }
 
 // ---------- quiz: nessun riscontro durante la partita, solo nel ripasso finale
+// Mentre si risponde la schermata e' un guscio fisso (#live): il countdown arriva ogni
+// secondo e ridisegnarla cancellerebbe quello che stai scrivendo o le spunte gia' messe.
+let scelte = new Set();
+
 function quizV(v, s) {
   if (v.phase === 'via') return `<div class="big">Pronto?</div><div class="mid">${v.tot} domande</div>`;
   if (v.phase === 'fine') return fineV(s);
   if (v.phase === 'stacco')
     return `<div class="big">✍️</div><div class="mid">Segnata.<br>Le risposte giuste alla fine, tutte insieme.</div>`;
+  if (v.phase === 'ripasso') return ripassoV(v);
 
-  if (v.phase === 'ripasso') {
-    if (v.r < 0) return `<div class="big">🎯</div><div class="mid">Finito.<br>Guarda lo schermo: arrivano le risposte.</div>`;
-    return `<div class="mid">Risposta ${v.n}/${v.tot}</div>
-      <p class="q">${esc(v.q)}</p>
-      <div class="opts">${v.o.map((o, i) => `
-        <button class="opt o${i} ${i === v.c ? 'win' : 'dim'}" disabled><i>${LET[i]}</i>${esc(o)}</button>`).join('')}</div>
-      <div class="mid">${v.pick == null ? '⏳ Non avevi risposto' : v.ok ? '✅ Giusta!' : '❌ Avevi scelto ' + LET[v.pick]}</div>`;
+  const testa = `<div class="mid">Domanda ${v.n}/${v.tot} · <span id="left">${v.left}</span>s</div>
+    <p class="q">${esc(v.q)}</p>`;
+  if (v.answered) {
+    const cosa = v.type === 'aperta' ? `“${esc(v.text)}”` : v.picks.map((k) => LET[k]).join(' ');
+    return `${testa}<div class="big">✔</div><div class="mid">Risposta inviata: <b>${cosa}</b></div>`;
   }
+  scelte = new Set();
+  let corpo;
+  if (v.type === 'aperta') {
+    corpo = `<input id="risposta" maxlength="80" placeholder="Scrivi la risposta" autocomplete="off" enterkeyhint="send">
+      <button class="go" data-send="1">INVIA</button>`;
+  } else if (v.multi) {
+    corpo = `<div class="mid" style="font-size:16px">Più risposte giuste: tocca tutte quelle che vuoi, poi conferma</div>
+      <div class="opts">${v.o.map((o, i) => `
+        <button class="opt o${i}" data-toggle="${i}" id="opt${i}"><i>${LET[i]}</i>${esc(o)}<span class="spunta" style="margin-left:auto">⬜</span></button>`).join('')}</div>
+      <button class="go" data-confirm="1" id="conferma" disabled>CONFERMA</button>`;
+  } else {
+    corpo = `<div class="opts">${v.o.map((o, i) => `
+      <button class="opt o${i}" data-pick="${i}"><i>${LET[i]}</i>${esc(o)}</button>`).join('')}</div>`;
+  }
+  return `<div id="live" data-n="${v.n}" style="display:flex;flex-direction:column;gap:14px">${testa}${corpo}</div>`;
+}
 
-  return `<div class="mid">Domanda ${v.n}/${v.tot} · ${v.left}s</div>
-    <p class="q">${esc(v.q)}</p>
+function quizP(v) {
+  $('#left').textContent = v.left;
+}
+
+function spunta(i) {
+  scelte.has(i) ? scelte.delete(i) : scelte.add(i);
+  const b = $('#opt' + i);
+  b.classList.toggle('win', scelte.has(i));
+  b.querySelector('.spunta').textContent = scelte.has(i) ? '✅' : '⬜';
+  $('#conferma').disabled = !scelte.size;
+}
+
+function ripassoV(v) {
+  if (v.r < 0) return `<div class="big">🎯</div><div class="mid">Finito.<br>Guarda lo schermo: arrivano le risposte.</div>`;
+  const testa = `<div class="mid">Risposta ${v.n}/${v.tot}</div><p class="q">${esc(v.q)}</p>`;
+  if (v.type === 'aperta') {
+    const giusta = v.a.length ? `Risposta giusta: <b>${v.a.map(esc).join(' / ')}</b>` : 'Era un sondaggio: nessuna risposta sbagliata';
+    const mia = !v.answered ? '⏳ Non avevi risposto'
+      : `${v.ok ? '✅' : v.ok === false ? '❌' : '💬'} Avevi scritto “${esc(v.text)}”`;
+    return `${testa}<div class="mid" style="color:var(--fg)">${giusta}</div><div class="mid">${mia}</div>`;
+  }
+  return `${testa}
     <div class="opts">${v.o.map((o, i) => `
-      <button class="opt o${i} ${v.pick != null && v.pick !== i ? 'dim' : ''}"
-        data-pick="${i}" ${v.pick != null ? 'disabled' : ''}><i>${LET[i]}</i>${esc(o)}</button>`).join('')}</div>
-    ${v.pick != null ? '<div class="mid">Risposta inviata ✔</div>' : ''}`;
+      <button class="opt o${i} ${v.c.includes(i) ? 'win' : 'dim'}" disabled><i>${LET[i]}</i>${esc(o)}
+        ${v.picks && v.picks.includes(i) ? '<span style="margin-left:auto">👈 tu</span>' : ''}</button>`).join('')}</div>
+    <div class="mid">${!v.answered ? '⏳ Non avevi risposto' : v.ok ? '✅ Giusta!' : '❌ Avevi scelto ' + v.picks.map((k) => LET[k]).join(' ')}</div>`;
 }
 
 // ---------- riflessi
@@ -515,10 +554,13 @@ function salaV(v, s) {
 
 // un solo listener: i bottoni vengono ridisegnati a ogni cambio di fase
 $('#main').addEventListener('click', (e) => {
-  const b = e.target.closest('[data-pick],[data-tap],[data-lane],[data-skin]');
+  const b = e.target.closest('[data-pick],[data-tap],[data-lane],[data-skin],[data-toggle],[data-confirm],[data-send]');
   if (!b || ws.readyState !== 1) return;
   if (navigator.vibrate) navigator.vibrate(12);
   if (b.dataset.skin) return ws.send(JSON.stringify({ t: 'skin' }));
+  if (b.dataset.toggle) return spunta(+b.dataset.toggle);
+  if (b.dataset.confirm) return scelte.size && ws.send(JSON.stringify({ picks: [...scelte] }));
+  if (b.dataset.send) return inviaTesto();
   if (b.id === 'jump') { salta(); return ws.send(JSON.stringify({ tap: 1 })); }
   if (b.classList.contains('tap')) colpo(240 + ultimaPct * 4); // Insieme: il tono sale col riempirsi della barra
   if (b.dataset.lane && G[lastGame] === G.rush) {
@@ -532,6 +574,14 @@ $('#main').addEventListener('click', (e) => {
     return ws.send(JSON.stringify({ lane }));
   }
   ws.send(JSON.stringify(b.dataset.tap ? { tap: 1 } : { pick: +b.dataset.pick }));
+});
+
+function inviaTesto() {
+  const t = $('#risposta') && $('#risposta').value.trim();
+  if (t && ws.readyState === 1) ws.send(JSON.stringify({ text: t }));
+}
+$('#main').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && e.target.id === 'risposta') inviaTesto();
 });
 
 // Un colpo secco a ogni battuta. Generato al volo: nessun file da scaricare, e il
