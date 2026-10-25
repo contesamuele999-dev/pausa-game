@@ -1356,7 +1356,9 @@ api.post('/ai/quiz', auth, async (req, res) => {
     const j = await r.json().catch(() => ({}));
     if (!r.ok) {
       console.error('Gemini:', r.status, j.error && j.error.message);
-      return res.status(502).json({ err: r.status === 429 ? 'Quota gratuita di Gemini finita, riprova piu\' tardi' : 'Gemini non ha risposto bene' });
+      // il messaggio di Google dice gia' cosa non va (chiave, modello, quota): lo vede solo l'host loggato
+      const msg = (j.error && j.error.message) || 'errore ' + r.status;
+      return res.status(502).json({ err: r.status === 429 ? 'Quota gratuita di Gemini finita, riprova piu\' tardi' : 'Gemini: ' + msg.slice(0, 300) });
     }
     const out = j.candidates && j.candidates[0] && j.candidates[0].content;
     const raw = JSON.parse(((out && out.parts) || []).map((p) => p.text || '').join('') || 'null');
