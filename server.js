@@ -1303,7 +1303,7 @@ const AI_SCHEMA = {
           a: { type: 'ARRAY', items: { type: 'STRING' } },
           t: { type: 'INTEGER' }
         },
-        required: ['type', 'q', 't']
+        required: ['type', 'q', 'o', 'c', 'a', 't']
       }
     }
   },
@@ -1311,9 +1311,9 @@ const AI_SCHEMA = {
 };
 const AI_REGOLE = `Sei l'autore di quiz per giochi da telefono in sala (stile Kahoot), in italiano salvo richiesta diversa.
 Formato di ogni domanda:
-- type "scelta": "o" da 2 a 4 risposte brevi (max 80 caratteri), "c" gli indici (da 0) delle risposte giuste, di solito una sola.
+- type "scelta": "o" da 2 a 4 risposte brevi (max 80 caratteri), "c" gli indici delle risposte giuste contando da 0 (la prima risposta e' 0), almeno uno, di solito uno solo; "a" vuoto.
   Vero o falso = scelta con o ["Vero","Falso"].
-- type "aperta": "a" le risposte accettate (sinonimi e grafie alternative); "a" vuoto = sondaggio senza punti.
+- type "aperta": "o" e "c" vuoti, "a" le risposte accettate (sinonimi e grafie alternative); "a" vuoto = sondaggio senza punti.
 - "q" massimo 200 caratteri, "t" secondi per rispondere tra ${store.TEMPI.join(', ')} (di solito 20).
 Massimo 100 domande. Fatti corretti e verificabili, risposte sbagliate plausibili, giuste in posizioni varie.`;
 
@@ -1362,6 +1362,8 @@ api.post('/ai/quiz', auth, async (req, res) => {
     }
     const out = j.candidates && j.candidates[0] && j.candidates[0].content;
     const raw = JSON.parse(((out && out.parts) || []).map((p) => p.text || '').join('') || 'null');
+    // ogni tanto l'IA sbaglia una domanda (nessuna giusta segnata): si butta quella, non tutto il quiz
+    if (raw && Array.isArray(raw.qs)) raw.qs = raw.qs.filter((d) => !store.cleanQuiz({ title: 'x', qs: [d] }).err);
     const pulito = store.cleanQuiz(raw);
     if (pulito.err) return res.status(502).json({ err: 'L\'IA ha prodotto un quiz non valido (' + pulito.err + '), riprova' });
     res.json(pulito.quiz);
