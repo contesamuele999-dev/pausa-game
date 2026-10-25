@@ -297,6 +297,11 @@ async function editorV(id, resta) {
       <div class="field"><span>Descrizione (solo per te)</span><input id="desc" maxlength="200" value="${esc(Q.desc)}"></div>
       <label class="chk"><input type="checkbox" id="shuffle" ${Q.shuffle ? 'checked' : ''}> Domande in ordine casuale a ogni partita</label>
     </div>
+    <div class="card hide" id="ia" style="margin-bottom:16px">
+      <div class="field"><span>✨ Con l'IA</span><textarea id="iap" rows="2" maxlength="2000"></textarea></div>
+      <div class="row"><button class="go" id="iago">✨ Genera</button><button class="small hide" id="iaund">↩ Annulla</button>
+        <span id="iast" class="dim"></span></div>
+    </div>
     <div class="ed">
       <div class="card">
         <div class="slides" id="slides"></div>
@@ -320,6 +325,55 @@ async function editorV(id, resta) {
   $('#salva').onclick = salva;
   disegna();
   stato();
+  iaV();
+}
+
+// Genera un quiz da zero o modifica quello aperto. Il risultato non si salva da solo: si guarda e poi Salva.
+let iaOn = null, prima = null;
+async function iaV() {
+  if (iaOn === null) iaOn = await api('GET', '/ai').then((r) => r.on, () => false);
+  if (!iaOn || !$('#ia')) return;
+  $('#ia').classList.remove('hide');
+  const modifica = () => Q.qs.some((d) => d.q.trim());
+  const etichetta = () => {
+    $('#iap').placeholder = modifica() ? 'Es. aggiungi 5 domande più difficili, oppure traduci tutto in inglese'
+      : 'Es. 10 domande sulla storia di Roma per adulti, tempo 20 secondi';
+    $('#iago').textContent = modifica() ? '✨ Modifica' : '✨ Genera';
+  };
+  etichetta();
+  $('#iago').onclick = async () => {
+    const prompt = $('#iap').value.trim();
+    if (!prompt) return $('#iap').focus();
+    $('#iago').disabled = true;
+    $('#iast').textContent = 'L\'IA sta scrivendo…';
+    try {
+      const r = await api('POST', '/ai/quiz', { prompt, quiz: modifica() ? Q : null });
+      prima = JSON.parse(JSON.stringify(Q));
+      metti({ title: r.title, desc: r.desc, shuffle: r.shuffle, qs: r.qs });
+      $('#iap').value = '';
+      $('#iast').textContent = `✓ ${Q.qs.length} domande: controllale e salva`;
+      $('#iaund').classList.remove('hide');
+    } catch (err) {
+      $('#iast').textContent = '⚠️ ' + err.message;
+    } finally {
+      $('#iago').disabled = false;
+    }
+  };
+  $('#iaund').onclick = () => {
+    metti(prima);
+    $('#iaund').classList.add('hide');
+    $('#iast').textContent = '';
+  };
+  function metti(nuovo) {
+    Object.assign(Q, nuovo);
+    $('#title').value = Q.title;
+    $('#desc').value = Q.desc;
+    $('#shuffle').checked = Q.shuffle;
+    sel = 0;
+    tocca();
+    disegna();
+    etichetta();
+  }
 }
 
 function tocca() {

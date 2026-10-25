@@ -1,4 +1,6 @@
 'use strict';
+// .env accanto a server.js (es. GEMINI_API_KEY=...), se c'e'. Le variabili gia' impostate vincono.
+try { process.loadEnvFile(require('path').join(__dirname, '.env')); } catch { /* nessun .env */ }
 const http = require('http');
 const path = require('path');
 const express = require('express');
@@ -1278,6 +1280,93 @@ api.get('/backup', auth, (req, res) => {
 api.post('/backup', auth, express.json({ limit: '20mb' }), (req, res) => {
   const r = store.importAccount(req.user, req.body);
   r.err ? res.status(400).json(r) : res.json(r);
+});
+
+// ---------------------------------------------------------------- quiz con l'IA (Gemini, piano gratuito)
+// Chiave da https://aistudio.google.com/apikey in GEMINI_API_KEY. Senza chiave il bottone nell'editor sparisce.
+
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+const AI_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    title: { type: 'STRING' },
+    desc: { type: 'STRING' },
+    qs: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          type: { type: 'STRING', enum: ['scelta', 'aperta'] },
+          q: { type: 'STRING' },
+          o: { type: 'ARRAY', items: { type: 'STRING' } },
+          c: { type: 'ARRAY', items: { type: 'INTEGER' } },
+          a: { type: 'ARRAY', items: { type: 'STRING' } },
+          t: { type: 'INTEGER' }
+        },
+        required: ['type', 'q', 't']
+      }
+    }
+  },
+  required: ['title', 'qs']
+};
+const AI_REGOLE = `Sei l'autore di quiz per giochi da telefono in sala (stile Kahoot), in italiano salvo richiesta diversa.
+Formato di ogni domanda:
+- type "scelta": "o" da 2 a 4 risposte brevi (max 80 caratteri), "c" gli indici (da 0) delle risposte giuste, di solito una sola.
+  Vero o falso = scelta con o ["Vero","Falso"].
+- type "aperta": "a" le risposte accettate (sinonimi e grafie alternative); "a" vuoto = sondaggio senza punti.
+- "q" massimo 200 caratteri, "t" secondi per rispondere tra ${store.TEMPI.join(', ')} (di solito 20).
+Massimo 100 domande. Fatti corretti e verificabili, risposte sbagliate plausibili, giuste in posizioni varie.`;
+
+// ponytail: limite in memoria per account, si azzera al riavvio; basta a non bruciare la quota gratuita
+const aiUso = new Map();
+function aiTroppe(user) {
+  const now = Date.now();
+  const t = (aiUso.get(user) || []).filter((x) => now - x < 60 * 60 * 1000);
+  aiUso.set(user, t);
+  if (t.length >= 30) return true;
+  t.push(now);
+  return false;
+}
+
+api.get('/ai', auth, (_req, res) => res.json({ on: !!process.env.GEMINI_API_KEY }));
+
+// { prompt, quiz? }: senza quiz ne crea uno nuovo, con il quiz lo modifica seguendo il prompt
+api.post('/ai/quiz', auth, async (req, res) => {
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) return res.status(503).json({ err: 'IA non configurata: manca GEMINI_API_KEY' });
+  const prompt = String(req.body.prompt || '').trim().slice(0, 2000);
+  if (!prompt) return res.status(400).json({ err: 'Scrivi cosa vuoi' });
+  if (aiTroppe(req.user)) return res.status(429).json({ err: 'Troppe richieste, riprova tra un po\'' });
+  // un quiz a meta' (senza titolo, risposte vuote) non passa cleanQuiz ma va modificato lo stesso
+  const quiz = req.body.quiz && (store.cleanQuiz(req.body.quiz).quiz || req.body.quiz);
+  const testo = quiz
+    ? `Quiz attuale:\n${JSON.stringify(quiz).slice(0, 100000)}\n\nModificalo cosi': ${prompt}\nRestituisci il quiz completo aggiornato; lascia invariato quello che la richiesta non tocca.`
+    : `Crea un quiz: ${prompt}\nSe il numero di domande non e' indicato, fanne 10.`;
+  try {
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: AI_REGOLE }] },
+        contents: [{ role: 'user', parts: [{ text: testo }] }],
+        generationConfig: { responseMimeType: 'application/json', responseSchema: AI_SCHEMA }
+      }),
+      signal: AbortSignal.timeout(90000)
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      console.error('Gemini:', r.status, j.error && j.error.message);
+      return res.status(502).json({ err: r.status === 429 ? 'Quota gratuita di Gemini finita, riprova piu\' tardi' : 'Gemini non ha risposto bene' });
+    }
+    const out = j.candidates && j.candidates[0] && j.candidates[0].content;
+    const raw = JSON.parse(((out && out.parts) || []).map((p) => p.text || '').join('') || 'null');
+    const pulito = store.cleanQuiz(raw);
+    if (pulito.err) return res.status(502).json({ err: 'L\'IA ha prodotto un quiz non valido (' + pulito.err + '), riprova' });
+    res.json(pulito.quiz);
+  } catch (e) {
+    console.error('Gemini:', e.message);
+    res.status(502).json({ err: 'Gemini non raggiungibile, riprova' });
+  }
 });
 
 app.use('/api', api);

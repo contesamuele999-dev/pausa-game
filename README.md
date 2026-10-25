@@ -79,6 +79,19 @@ tutti i suoi risultati (`pausa-game-nome-data.json`, senza password). Da li' si 
 che c'e' gia' viene aggiornato, quello che manca aggiunto, niente si cancella. Il file si puo'
 caricare anche su un altro server o in un altro account: e' il modo per non perdere niente su
 un hosting senza disco persistente.
+**Quiz con l'IA (Gemini, gratis).** Nell'editor il box **✨ Con l'IA**: su un quiz vuoto scrivi cosa
+vuoi ("10 domande sul Rinascimento per ragazzi") e **Genera**; su un quiz già scritto chiedi una modifica
+("aggiungi 5 domande difficili", "traduci in inglese") e **Modifica**. Il risultato non si salva da solo:
+controlli, e **Salva** o **↩ Annulla**. Serve una chiave gratuita da https://aistudio.google.com/apikey,
+in un file `.env` accanto a `server.js` (non va su GitHub) o nelle variabili d'ambiente dell'hosting:
+
+```
+GEMINI_API_KEY=la-tua-chiave
+```
+
+Senza chiave il box non compare. Modello di default `gemini-2.5-flash` (cambialo con `GEMINI_MODEL`).
+Massimo 30 richieste l'ora per account, per non finire la quota gratuita.
+
 Online conviene **`SIGNUP=chiusa`**: si registra il primo account (il tuo) e poi nessun altro.
 
 ### Perche' "Raccogli" gira sul server
