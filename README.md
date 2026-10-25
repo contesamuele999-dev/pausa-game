@@ -89,7 +89,7 @@ in un file `.env` accanto a `server.js` (non va su GitHub) o nelle variabili d'a
 GEMINI_API_KEY=la-tua-chiave
 ```
 
-Senza chiave il box non compare. Modello di default `gemini-2.5-flash` (cambialo con `GEMINI_MODEL`).
+Senza chiave il box non compare. Modello di default `gemini-3.5-flash` (cambialo con `GEMINI_MODEL`).
 Massimo 30 richieste l'ora per account, per non finire la quota gratuita.
 
 Online conviene **`SIGNUP=chiusa`**: si registra il primo account (il tuo) e poi nessun altro.

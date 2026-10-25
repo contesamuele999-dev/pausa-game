@@ -1285,7 +1285,7 @@ api.post('/backup', auth, express.json({ limit: '20mb' }), (req, res) => {
 // ---------------------------------------------------------------- quiz con l'IA (Gemini, piano gratuito)
 // Chiave da https://aistudio.google.com/apikey in GEMINI_API_KEY. Senza chiave il bottone nell'editor sparisce.
 
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash';
 const AI_SCHEMA = {
   type: 'OBJECT',
   properties: {
