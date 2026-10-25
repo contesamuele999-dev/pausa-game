@@ -220,7 +220,93 @@ function deleteResult(owner, id) {
   return true;
 }
 
+// ---------------------------------------------------------------- backup per account
+// Un file solo con tutti i quiz e i risultati di un account. Non contiene la password:
+// si ripristina dentro l'account con cui si e' fatto l'accesso, anche su un altro server.
+
+const BACKUP = 'pausa-game-backup';
+
+function exportAccount(owner) {
+  const senza = (x) => { const c = Object.assign({}, x); delete c.owner; return c; };
+  return {
+    format: BACKUP,
+    version: 1,
+    user: owner,
+    date: Date.now(),
+    quizzes: Object.values(load('quizzes')).filter((q) => q.owner === owner).map(senza),
+    results: Object.values(load('results')).filter((r) => r.owner === owner).map(senza)
+  };
+}
+
+const num = (x) => (Number.isFinite(+x) ? +x : 0);
+const ints = (a) => (Array.isArray(a) ? a.filter((k) => Number.isInteger(k) && k >= 0 && k < 4) : []);
+
+// Un risultato arriva da un file che l'utente puo' aver toccato: si ricostruisce campo
+// per campo coi tipi giusti, cosi' nella pagina delle statistiche finisce solo roba pulita.
+function cleanResult(r) {
+  if (!r || !Array.isArray(r.players) || !Array.isArray(r.questions)) return null;
+  const players = r.players.slice(0, 1000).map((p, k) => ({
+    k: Number.isInteger(p.k) ? p.k : k, name: txt(p.name, 40), ch: txt(p.ch, 8),
+    score: num(p.score), rank: num(p.rank) || k + 1, ok: num(p.ok)
+  }));
+  const questions = r.questions.slice(0, LIM.domande).map((q) => {
+    const aperta = q.type === 'aperta';
+    const out = { type: aperta ? 'aperta' : 'scelta', q: txt(q.q, LIM.testo), t: num(q.t) };
+    if (aperta) out.a = (Array.isArray(q.a) ? q.a : []).map((x) => txt(x, LIM.opzione)).slice(0, LIM.accettate);
+    else {
+      out.o = (Array.isArray(q.o) ? q.o : []).slice(0, 4).map((x) => txt(x, LIM.opzione));
+      out.c = ints(q.c);
+      out.counts = out.o.map((_, i) => num((q.counts || [])[i]));
+    }
+    out.answers = (Array.isArray(q.answers) ? q.answers : []).slice(0, 1000).map((a) => {
+      const x = { k: num(a.k), name: txt(a.name, 40), ok: a.ok === true ? true : a.ok === false ? false : null, pts: num(a.pts), ms: num(a.ms) };
+      if (aperta) x.text = txt(a.text, 80); else x.picks = ints(a.picks);
+      return x;
+    });
+    if (aperta) out.groups = (Array.isArray(q.groups) ? q.groups : []).slice(0, 200)
+      .map((g) => ({ text: txt(g.text, 80), n: num(g.n), ok: g.ok === true ? true : g.ok === false ? false : null }));
+    return out;
+  });
+  return {
+    quizId: r.quizId ? txt(r.quizId, 40) : null, title: txt(r.title, 80) || 'Quiz', date: num(r.date) || Date.now(),
+    partial: !!r.partial, avg: r.avg == null ? null : num(r.avg), players, questions
+  };
+}
+
+// Ripristino: un quiz o un risultato gia' presente con lo stesso id viene sovrascritto
+// (e' lo stesso, magari piu' vecchio), il resto si aggiunge. Niente si cancella.
+function importAccount(owner, data) {
+  if (!data || data.format !== BACKUP) return { err: 'Il file non e\' un backup di Pausa Game' };
+  const qdb = load('quizzes');
+  const rdb = load('results');
+  const nuovoId = new Map(); // id del backup -> id qui, se quello era occupato da un altro account
+  let quiz = 0, risultati = 0, scartati = 0;
+  for (const raw of Array.isArray(data.quizzes) ? data.quizzes : []) {
+    const { quiz: q } = cleanQuiz(raw);
+    if (!q) { scartati++; continue; }
+    let id = typeof raw.id === 'string' && /^[\w-]{1,40}$/.test(raw.id) ? raw.id : newId();
+    if (qdb[id] && qdb[id].owner !== owner) id = newId();
+    if (!qdb[id] && Object.values(qdb).filter((x) => x.owner === owner).length >= LIM.quiz) { scartati++; continue; }
+    nuovoId.set(raw.id, id);
+    qdb[id] = Object.assign(q, { id, owner, created: num(raw.created) || Date.now(), updated: num(raw.updated) || Date.now() });
+    quiz++;
+  }
+  for (const raw of Array.isArray(data.results) ? data.results : []) {
+    const r = cleanResult(raw);
+    if (!r) { scartati++; continue; }
+    let id = typeof raw.id === 'string' && /^[\w-]{1,40}$/.test(raw.id) ? raw.id : newId();
+    if (rdb[id] && rdb[id].owner !== owner) id = newId();
+    if (r.quizId && nuovoId.has(r.quizId)) r.quizId = nuovoId.get(r.quizId);
+    rdb[id] = Object.assign(r, { id, owner });
+    risultati++;
+  }
+  save('quizzes');
+  save('results');
+  return { quiz, risultati, scartati };
+}
+
 module.exports = {
+  exportAccount, importAccount,
   register, checkLogin, userCount, makeToken, readToken, userFromCookie, SESSION_DAYS,
   cleanQuiz, listQuizzes, getQuiz, saveQuiz, deleteQuiz, TEMPI,
   addResult, listResults, getResult, deleteResult

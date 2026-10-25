@@ -193,6 +193,32 @@ function room(names) {
   assert.ok(store.deleteQuiz('anna', quiz.id));
 }
 
+// ---------------- backup per account
+{
+  store.saveQuiz('carla', null, { title: 'Da salvare', qs: [{ type: 'aperta', q: 'Chi?', a: ['Io'] }] });
+  const bk = JSON.parse(JSON.stringify(store.exportAccount('carla')));
+  assert.equal(bk.quizzes.length, 1);
+  assert.equal(bk.quizzes[0].owner, undefined, 'il backup non porta il proprietario');
+  assert.equal(JSON.stringify(bk).includes('hash'), false, 'niente password nel backup');
+  bk.results.push({ quizId: bk.quizzes[0].id, title: 'Partita', date: 1, players: [{ name: '<b>x</b>', score: '<img>' }], questions: [] });
+
+  assert.ok(store.importAccount('dario', { quizzes: [] }).err, 'un file qualsiasi non e un backup');
+  const r = store.importAccount('dario', bk);
+  assert.deepEqual([r.quiz, r.risultati], [1, 1]);
+  const qd = store.listQuizzes('dario');
+  assert.equal(qd.length, 1, 'ripristinato in un altro account');
+  assert.notEqual(qd[0].id, bk.quizzes[0].id, 'id occupato da carla: nuovo id');
+  const rd = store.listResults('dario');
+  assert.equal(rd[0].quizId, qd[0].id, 'il risultato segue il quiz al nuovo id');
+  assert.equal(store.getResult('dario', rd[0].id).players[0].score, 0, 'campi ricostruiti coi tipi giusti');
+  assert.equal(store.listQuizzes('carla').length, 1, 'carla non perde niente');
+
+  // ripristinare due volte lo stesso backup nel proprio account non duplica
+  store.importAccount('carla', store.exportAccount('carla'));
+  store.importAccount('carla', store.exportAccount('carla'));
+  assert.equal(store.listQuizzes('carla').length, 1, 'niente doppioni');
+}
+
 // ---------------- riflessi
 {
   const r = room(['Ada', 'Bruno', 'Cleo']);

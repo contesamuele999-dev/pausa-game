@@ -63,8 +63,22 @@ la apre già in colonne in Excel. Valgono anche i quiz di `questions.json`, se l
 
 Solo l'host ha l'account: chi gioca entra sempre col QR e il nome, senza registrarsi.
 
-Dove finisce tutto: nella cartella `data/` accanto a `server.js` (o in `DATA_DIR`), tre file JSON.
-Per un backup basta copiarla. Le password sono salvate cifrate (scrypt), mai in chiaro.
+**Dove si salvano gli account e i dati.** Nella cartella `data/` accanto a `server.js` (o in `DATA_DIR`):
+
+```
+data/users.json    gli account: nome utente + password cifrata (scrypt con sale), mai in chiaro
+data/config.json   la chiave che firma i login (se la cancelli, tutti devono rifare l'accesso)
+data/quizzes.json  i quiz di tutti gli account
+data/results.json  i risultati delle partite
+```
+
+La cartella non va su GitHub (e' in `.gitignore`). Per un backup completo del server basta copiarla.
+
+**Backup per account.** In `/admin` → **Backup** ognuno scarica un file con tutti i suoi quiz e
+tutti i suoi risultati (`pausa-game-nome-data.json`, senza password). Da li' si ripristina: quello
+che c'e' gia' viene aggiornato, quello che manca aggiunto, niente si cancella. Il file si puo'
+caricare anche su un altro server o in un altro account: e' il modo per non perdere niente su
+un hosting senza disco persistente.
 Online conviene **`SIGNUP=chiusa`**: si registra il primo account (il tuo) e poi nessun altro.
 
 ### Perche' "Raccogli" gira sul server
@@ -173,7 +187,7 @@ Serve un host che faccia girare un processo Node persistente. Tutti hanno un pia
 5. Variabile `SIGNUP=chiusa`, dopo aver creato il tuo account su `/admin`.
 6. Per non perdere quiz e risultati: aggiungi un **Disk** (es. montato su `/var/data`) e metti
    `DATA_DIR=/var/data`. Il disco del piano gratuito si azzera a ogni riavvio e deploy: senza disco
-   persistente i quiz salvati spariscono. In alternativa esportali in JSON da `/admin` e reimportali.
+   persistente i quiz salvati spariscono. In alternativa scarica il backup da `/admin` → Backup prima di ogni deploy e ricaricalo dopo.
 
 Alternative equivalenti: **Railway**, **Fly.io**, o una VPS con `pm2`.
 

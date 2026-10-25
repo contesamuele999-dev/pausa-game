@@ -99,6 +99,7 @@
   <h1>✏️ I miei quiz</h1>
   <a href="#/">Quiz</a>
   <a href="#/r">Risultati</a>
+  <a href="#/backup">Backup</a>
   <span class="sp"></span>
   <a class="btn go" href="/host" target="_blank">📺 Apri lo schermo</a>
   <span id="who"></span>
@@ -175,6 +176,7 @@ function route() {
   const h = location.hash.replace(/^#\/?/, '');
   const [sez, id] = h.split('/');
   if (sez === 'q') return editorV(id);
+  if (sez === 'backup') return backupV();
   if (sez === 'r' && id) return risultatoV(id);
   if (sez === 'r') return risultatiV(new URLSearchParams(location.hash.split('?')[1] || '').get('quiz'));
   return elencoV();
@@ -465,6 +467,45 @@ async function salva() {
   } finally {
     if ($('#salva')) $('#salva').disabled = false;
   }
+}
+
+// ---------------------------------------------------------------- backup
+
+async function backupV() {
+  const list = await api('GET', '/quizzes');
+  const ris = await api('GET', '/results');
+  $('#main').innerHTML = `
+    <h2>💾 Backup del tuo account</h2>
+    <div class="stack">
+    <div class="card">
+      <h3>Salva un backup</h3>
+      <p class="dim">Un file con tutti i tuoi quiz (${list.length}) e tutti i risultati delle partite (${ris.length}).
+        Tienilo sul computer o su Drive: se il server perde i dati, o cambi server, lo ricarichi qui sotto.
+        La password non è dentro il file.</p>
+      <a class="btn go" href="/api/backup" download>⬇️ Scarica il backup</a>
+    </div>
+    <div class="card">
+      <h3>Ripristina da un backup</h3>
+      <p class="dim">Carica un file scaricato da qui. I quiz e i risultati che hai già vengono aggiornati, quelli che mancano
+        vengono aggiunti. Non si cancella niente.</p>
+      <label class="btn">⬆️ Scegli il file di backup<input type="file" id="rip" accept=".json,application/json" hidden></label>
+      <div id="esito" style="margin-top:10px"></div>
+    </div>
+    </div>`;
+  $('#rip').onchange = async (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    $('#esito').innerHTML = '<span class="dim">Ripristino…</span>';
+    try {
+      const r = await api('POST', '/backup', JSON.parse(await f.text()));
+      await backupV(); // ridisegna coi conteggi nuovi
+      $('#esito').innerHTML = `<span class="ok">✓ Ripristinati ${r.quiz} quiz e ${r.risultati} risultati</span>`
+        + (r.scartati ? ` <span class="dim">· ${r.scartati} voci non valide saltate</span>` : '');
+    } catch (err) {
+      $('#esito').innerHTML = `<span class="err">${esc(err.message === 'Unexpected end of JSON input' || err instanceof SyntaxError ? 'Il file non è un backup valido' : err.message)}</span>`;
+    }
+    e.target.value = '';
+  };
 }
 
 // ---------------------------------------------------------------- risultati

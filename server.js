@@ -1185,7 +1185,8 @@ app.get('/health', (_req, res) => res.json({ ok: true, rooms: rooms.size }));
 // Solo l'host ha un account: chi gioca dal telefono continua a entrare con nome e codice.
 
 const api = express.Router();
-api.use(express.json({ limit: '512kb' }));
+const jsonPiccolo = express.json({ limit: '512kb' });
+api.use((req, res, next) => (req.path === '/backup' ? next() : jsonPiccolo(req, res, next)));
 
 // SIGNUP=chiusa: si registra solo il primo account, poi la porta si chiude.
 // Utile online, dove chiunque trovi l'indirizzo potrebbe crearsi un account.
@@ -1266,6 +1267,18 @@ api.get('/results/:id', auth, (req, res) => {
 });
 
 api.delete('/results/:id', auth, (req, res) => res.json({ ok: store.deleteResult(req.user, req.params.id) }));
+
+api.get('/backup', auth, (req, res) => {
+  const giorno = new Date().toISOString().slice(0, 10);
+  res.setHeader('Content-Disposition', `attachment; filename="pausa-game-${req.user}-${giorno}.json"`);
+  res.json(store.exportAccount(req.user));
+});
+
+// un backup con tanti risultati pesa: qui il limite e' piu' largo che per un quiz solo
+api.post('/backup', auth, express.json({ limit: '20mb' }), (req, res) => {
+  const r = store.importAccount(req.user, req.body);
+  r.err ? res.status(400).json(r) : res.json(r);
+});
 
 app.use('/api', api);
 
