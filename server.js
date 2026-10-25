@@ -1286,6 +1286,7 @@ api.post('/backup', auth, express.json({ limit: '20mb' }), (req, res) => {
 // Chiave da https://aistudio.google.com/apikey in GEMINI_API_KEY. Senza chiave il bottone nell'editor sparisce.
 
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash';
+const GEMINI_RISERVA = process.env.GEMINI_RISERVA || 'gemini-3.5-flash-lite';
 const AI_SCHEMA = {
   type: 'OBJECT',
   properties: {
@@ -1343,17 +1344,23 @@ api.post('/ai/quiz', auth, async (req, res) => {
     ? `Quiz attuale:\n${JSON.stringify(quiz).slice(0, 100000)}\n\nModificalo cosi': ${prompt}\nRestituisci il quiz completo aggiornato; lascia invariato quello che la richiesta non tocca.`
     : `Crea un quiz: ${prompt}\nSe il numero di domande non e' indicato, fanne 10.`;
   try {
-    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: AI_REGOLE }] },
-        contents: [{ role: 'user', parts: [{ text: testo }] }],
-        generationConfig: { responseMimeType: 'application/json', responseSchema: AI_SCHEMA }
-      }),
-      signal: AbortSignal.timeout(90000)
-    });
-    const j = await r.json().catch(() => ({}));
+    // modello sovraccarico (503) o in errore (500): si riprova col modello di riserva
+    let r, j;
+    for (const model of [GEMINI_MODEL, GEMINI_RISERVA]) {
+      r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: AI_REGOLE }] },
+          contents: [{ role: 'user', parts: [{ text: testo }] }],
+          generationConfig: { responseMimeType: 'application/json', responseSchema: AI_SCHEMA }
+        }),
+        signal: AbortSignal.timeout(90000)
+      });
+      j = await r.json().catch(() => ({}));
+      if (r.status !== 503 && r.status !== 500) break;
+      console.error('Gemini:', model, r.status, j.error && j.error.message);
+    }
     if (!r.ok) {
       console.error('Gemini:', r.status, j.error && j.error.message);
       // il messaggio di Google dice gia' cosa non va (chiave, modello, quota): lo vede solo l'host loggato
